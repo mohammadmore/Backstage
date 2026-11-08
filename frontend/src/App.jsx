@@ -6,6 +6,7 @@ import StaffDashboard from './staff/StaffDashboard';
 import EventDashboard from './events/EventDashboard';
 import EventCreate from './events/EventCreate';
 import MasterData from './master/MasterData';
+import ChangePassword from './components/ChangePassword';
 
 const applyTheme = (t) => { if (t === 'dark') document.documentElement.classList.add('dark'); else document.documentElement.classList.remove('dark'); };
 
@@ -23,6 +24,7 @@ export default function App() {
     const [showNotifPanel, setShowNotifPanel] = useState(false);
     const [theme, setTheme] = useState('light');
     const [loggingIn, setLoggingIn] = useState(false);
+    const [showPwd, setShowPwd] = useState(false);
 
     // بازیابی نشست پس از رفرش صفحه (قبلاً با هر رفرش کاربر خارج می‌شد)
     useEffect(() => {
@@ -47,7 +49,7 @@ export default function App() {
         if (!user) return;
         const t = user.theme_pref === 'dark' ? 'dark' : 'light';
         setTheme(t); applyTheme(t);
-        if (user.is_admin) {
+        if (user.is_admin && !user.must_change_password) {
             loadMd(); fetchNotifs();
             const i = setInterval(() => { if (!document.hidden) fetchNotifs(); }, 15000);
             return () => clearInterval(i);
@@ -96,7 +98,12 @@ export default function App() {
         </div>
     );
 
-    if (!isAdmin) return <StaffDashboard user={user} onLogout={logout} />;
+    // رمز ضعیف یا موقت => تا تغییر رمز، دسترسی دیگری وجود ندارد (سرور هم همین را اعمال می‌کند)
+    if (user.must_change_password) return <ChangePassword forced user={user} onDone={(u) => u && setUser(u)} onLogout={logout} />;
+
+    const pwdModal = showPwd && <ChangePassword user={user} onDone={(u) => { setShowPwd(false); if (u) setUser(u); }} onCancel={() => setShowPwd(false)} />;
+
+    if (!isAdmin) return <>{pwdModal}<StaffDashboard user={user} onLogout={logout} onChangePassword={() => setShowPwd(true)} /></>;
 
     return (
         <div className="min-h-screen flex flex-col bg-slate-100 dark:bg-slate-900 transition-colors duration-300">
@@ -149,6 +156,7 @@ export default function App() {
                         {user.avatar ? <img src={user.avatar} className="w-7 h-7 rounded-full object-cover bg-white" alt="avatar" /> : <div className="w-7 h-7 rounded-full bg-slate-600 flex items-center justify-center text-xs"><Icons.Users /></div>}
                         <span className="text-sm font-bold text-slate-200 hidden sm:block">{toPersianNum(user.full_name)}</span>
                     </div>
+                    <button onClick={() => setShowPwd(true)} className="p-2 text-indigo-200 hover:text-white transition-colors focus:outline-none" title="تغییر رمز عبور"><Icons.Key /></button>
                     <button onClick={logout} className="text-red-400 font-bold bg-red-400/10 px-4 py-2 rounded-lg hover:bg-red-500 hover:text-white transition-colors">خروج</button>
                 </div>
             </header>
@@ -162,6 +170,7 @@ export default function App() {
                 {view === 'MASTER' && <div className="mt-8"><MasterData md={md} reload={loadMd} /></div>}
                 {showCreate && <EventCreate md={md} onDone={() => { setShowCreate(false); setView('EVENTS'); setEventsKey(k => k + 1); }} onCancel={() => setShowCreate(false)} />}
             </main>
+            {pwdModal}
         </div>
     );
 }

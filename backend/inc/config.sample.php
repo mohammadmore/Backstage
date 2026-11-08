@@ -20,4 +20,9 @@ return [
     'max_upload_bytes' => 3 * 1024 * 1024,
     // مدت اعتبار نشست کاربر بدون فعالیت (ثانیه)
     'session_lifetime' => 12 * 3600,
+    // ورود و تغییر رمز فقط روی https (فقط اگر هاست گواهی SSL ندارد false کنید)
+    'force_https' => true,
+    // پوشه نگهداری نشست‌ها و لاگ‌ها بیرون از public_html (خالی = خودکار: کنار public_html)
+    // مثال: '/home/USERNAME/event-data'
+    'storage_dir' => '',
 ];

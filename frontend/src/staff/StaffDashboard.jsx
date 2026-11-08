@@ -6,7 +6,7 @@ import { Icons } from '../components/Icons';
 // =====================================
 // داشبورد کارمندان
 // =====================================
-export default function StaffDashboard({ user, onLogout }) {
+export default function StaffDashboard({ user, onLogout, onChangePassword }) {
     const [myTasks, setMyTasks] = useState([]);
     const [loading, setLoading] = useState(true);
     const [delegationModal, setDelegationModal] = useState(null);
@@ -91,6 +91,7 @@ export default function StaffDashboard({ user, onLogout }) {
                             </div>
                         )}
                     </div>
+                    <button onClick={onChangePassword} className="p-2 text-indigo-200 hover:text-white transition-colors focus:outline-none" title="تغییر رمز عبور"><Icons.Key /></button>
                     <button onClick={onLogout} className="text-white bg-white/10 px-4 py-2 rounded-xl font-bold text-sm hover:bg-white/20 transition-colors">خروج</button>
                 </div>
             </header>

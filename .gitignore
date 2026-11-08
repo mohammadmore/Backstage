@@ -8,3 +8,4 @@ backend/uploads/*
 !backend/uploads/.htaccess
 error_log
 .DS_Store
+event-master-data-*/

@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 if (!defined('EVENT_APP')) { http_response_code(403); exit; }
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 /**
  * مهاجرت نسخه‌بندی‌شده دیتابیس.
@@ -23,7 +23,7 @@ function run_migrations(): void
     }
     try {
         $version = (int)(q_val("SELECT v FROM schema_meta WHERE k = 'version'") ?? 0);
-        $steps = [1 => 'migration_1', 2 => 'migration_2'];
+        $steps = [1 => 'migration_1', 2 => 'migration_2', 3 => 'migration_3'];
         foreach ($steps as $v => $fn) {
             if ($version < $v) {
                 $fn($pdo);
@@ -140,4 +140,12 @@ function migration_2(PDO $pdo): void
 
     // ۶) سرویس‌هایی که دسته‌بندی‌شان حذف شده بود از ویزارد ناپدید می‌شدند
     $pdo->exec('UPDATE services SET category_id = NULL WHERE category_id IS NOT NULL AND category_id NOT IN (SELECT id FROM categories)');
+}
+
+/** اجبار به تغییر رمزهای ضعیف و باطل کردن نشست‌ها پس از تغییر رمز */
+function migration_3(PDO $pdo): void
+{
+    try_exec($pdo, "ALTER TABLE `users` ADD COLUMN `must_change_password` tinyint(1) NOT NULL DEFAULT 0");
+    try_exec($pdo, "ALTER TABLE `users` ADD COLUMN `session_version` int(11) NOT NULL DEFAULT 0");
+    // رمزهای ضعیف قدیمی (مثل 123456) هنگام اولین ورود تشخیص داده می‌شوند، چون اکنون فقط هش آن‌ها موجود است
 }

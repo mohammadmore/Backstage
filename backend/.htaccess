@@ -2,6 +2,16 @@
 Options -Indexes
 DirectoryIndex index.html
 
+# انتقال اجباری به HTTPS (رمز عبور و کوکی نشست هرگز بدون رمزنگاری ارسال نشوند)
+# اگر هاست گواهی SSL ندارد، این بخش را غیرفعال کنید و force_https را در inc/config.php برابر false بگذارید.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{HTTPS} !=on
+    RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+    RewriteCond %{HTTP_HOST} !^(localhost|127\.0\.0\.1)(:[0-9]+)?$ [NC]
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+</IfModule>
+
 # جلوگیری از دسترسی به فایل‌های حساس (لاگ‌ها، فایل‌های پشتیبان و ...)
 <FilesMatch "(^\.|^error_log$|\.(log|sql|bak|old|orig|swp|ini|sh|md|lock|json)$)">
     <IfModule mod_authz_core.c>
@@ -37,4 +47,6 @@ DirectoryIndex index.html
     Header always set X-Content-Type-Options "nosniff"
     Header always set X-Frame-Options "SAMEORIGIN"
     Header always set Referrer-Policy "same-origin"
+    # مرورگر از این پس سایت را فقط با HTTPS باز می‌کند (۶ ماه)
+    Header always set Strict-Transport-Security "max-age=15552000" env=HTTPS
 </IfModule>

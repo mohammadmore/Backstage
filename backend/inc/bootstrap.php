@@ -44,6 +44,8 @@ function app_config(): array
             'max_login_attempts' => 10,
             'max_upload_bytes' => 3 * 1024 * 1024,
             'session_lifetime' => 12 * 3600,
+            'force_https' => true,
+            'storage_dir' => '',
         ];
     }
     return $cfg;
@@ -117,11 +119,49 @@ function is_https(): bool
         || ((int)($_SERVER['SERVER_PORT'] ?? 0) === 443);
 }
 
+/**
+ * پوشه ذخیره نشست‌ها و لاگ‌ها، بیرون از وب‌روت.
+ * ترتیب: مقدار storage_dir در config.php ← پوشه‌ای کنار public_html ← (در صورت عدم امکان) inc/
+ * پوشه inc با .htaccess محافظت می‌شود، ولی روی سرورهایی که .htaccess را نمی‌خوانند (مثل Nginx)
+ * فقط نگهداری بیرون از وب‌روت امن است.
+ */
+function storage_dir(string $sub): string
+{
+    static $cache = [];
+    if (isset($cache[$sub])) return $cache[$sub];
+    $bases = [];
+    $cfg = app_config();
+    if (!empty($cfg['storage_dir'])) $bases[] = rtrim((string)$cfg['storage_dir'], '/\\');
+    $docroot = @realpath((string)($_SERVER['DOCUMENT_ROOT'] ?? ''));
+    if ($docroot && dirname($docroot) !== $docroot) {
+        $bases[] = dirname($docroot) . '/event-master-data-' . substr(md5(dirname(__DIR__)), 0, 8);
+    }
+    foreach ($bases as $base) {
+        $dir = $base . '/' . $sub;
+        if ($docroot && strpos((string)@realpath($base) ?: $base, $docroot . DIRECTORY_SEPARATOR) === 0) continue; // داخل وب‌روت نباشد
+        if (!@is_dir($dir)) @mkdir($dir, 0700, true);
+        if (@is_dir($dir) && @is_writable($dir)) return $cache[$sub] = $dir;
+    }
+    $dir = __DIR__ . '/' . $sub;
+    if (!is_dir($dir)) @mkdir($dir, 0700, true);
+    if (empty($cache['__warned'])) {
+        $cache['__warned'] = true;
+        error_log('[security] storage outside web root is not writable; falling back to inc/. Set storage_dir in inc/config.php.');
+    }
+    return $cache[$sub] = $dir;
+}
+
+/** هدایت لاگ خطاهای PHP به پوشه امن */
+function configure_error_log(): void
+{
+    $dir = storage_dir('logs');
+    if (is_dir($dir) && is_writable($dir)) ini_set('error_log', $dir . '/php-error.log');
+}
+
 function start_session(): void
 {
     $lifetime = (int)app_config()['session_lifetime'];
-    $dir = __DIR__ . '/sessions';
-    if (!is_dir($dir)) { @mkdir($dir, 0700, true); }
+    $dir = storage_dir('sessions');
     if (is_dir($dir) && is_writable($dir)) {
         session_save_path($dir);
         ini_set('session.gc_probability', '1');
@@ -159,18 +199,26 @@ function is_admin_role(?string $role): bool
 function current_user(): ?array
 {
     static $cached = false;
+    if (!empty($GLOBALS['__reset_current_user'])) { $cached = false; $GLOBALS['__reset_current_user'] = false; }
     if ($cached !== false) return $cached;
     $cached = null;
     $uid = (int)($_SESSION['uid'] ?? 0);
     if ($uid > 0) {
-        $u = q_one('SELECT id, username, full_name, role, avatar, can_delegate, theme_pref, is_shadow FROM users WHERE id = ?', [$uid]);
-        if ($u && (int)$u['is_shadow'] === 0) {
+        $u = q_one('SELECT id, username, full_name, role, avatar, can_delegate, theme_pref, is_shadow, must_change_password, session_version FROM users WHERE id = ?', [$uid]);
+        // تغییر رمز (توسط خود کاربر یا مدیر) همه نشست‌های قبلی را باطل می‌کند
+        if ($u && (int)$u['is_shadow'] === 0 && (int)($_SESSION['sv'] ?? -1) === (int)$u['session_version']) {
             $cached = public_user($u);
         } else {
-            unset($_SESSION['uid']);
+            unset($_SESSION['uid'], $_SESSION['sv']);
         }
     }
     return $cached;
+}
+
+function forget_current_user(): void
+{
+    // بعد از تغییر وضعیت کاربر در همین درخواست، نسخه کش‌شده دوباره خوانده شود
+    $GLOBALS['__reset_current_user'] = true;
 }
 
 function public_user(array $u): array
@@ -184,7 +232,33 @@ function public_user(array $u): array
         'can_delegate' => (int)$u['can_delegate'],
         'theme_pref' => $u['theme_pref'] === 'dark' ? 'dark' : 'light',
         'is_admin' => is_admin_role($u['role']),
+        'must_change_password' => (int)($u['must_change_password'] ?? 0) === 1,
     ];
+}
+
+// ---------------------------------------------------------------
+// سیاست رمز عبور
+// ---------------------------------------------------------------
+const MIN_PASSWORD_LENGTH = 8;
+const COMMON_PASSWORDS = [
+    '123456', '1234567', '12345678', '123456789', '1234567890', '0987654321', '987654321', '654321', '123123', '123321',
+    '111111', '1111111', '11111111', '000000', '00000000', '112233', '121212', '666666', '888888', '147258369', '123654789',
+    'password', 'password1', 'passw0rd', 'qwerty', 'qwerty123', 'qwertyuiop', 'asdfgh', 'asdfghjkl', 'zxcvbnm', '1q2w3e4r',
+    '1q2w3e4r5t', '1234qwer', 'qwer1234', 'abc123', 'abcd1234', 'admin', 'admin123', 'admin1234', 'administrator', 'iloveyou',
+    'welcome', 'letmein', 'event', 'event123', 'eventmaster', 'iran1234', 'tehran', 'test1234', 'changeme',
+];
+
+/** null یعنی رمز قابل قبول است؛ در غیر این صورت دلیل رد */
+function password_problem(string $pw, string $username = ''): ?string
+{
+    if (mb_strlen($pw) < MIN_PASSWORD_LENGTH) return 'رمز عبور باید حداقل ' . strtr((string)MIN_PASSWORD_LENGTH, ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']) . ' کاراکتر باشد.';
+    if (strlen($pw) > 72) return 'رمز عبور بیش از حد طولانی است.';
+    $low = mb_strtolower(to_en_digits($pw));
+    if (in_array($low, COMMON_PASSWORDS, true)) return 'این رمز عبور بسیار رایج و قابل حدس است.';
+    if ($username !== '' && mb_strpos($low, mb_strtolower($username)) !== false) return 'رمز عبور نباید شامل نام کاربری باشد.';
+    if (preg_match('/^(.)\1+$/u', $low)) return 'رمز عبور نباید از یک کاراکتر تکراری تشکیل شده باشد.';
+    if (preg_match('/^\d+$/', $low) && (strpos('01234567890', $low) !== false || strpos('09876543210', $low) !== false)) return 'رمز عبور نباید یک دنباله عددی ساده باشد.';
+    return null;
 }
 
 function require_user(): array
@@ -199,6 +273,12 @@ function require_admin(): array
     $u = require_user();
     if (!$u['is_admin']) throw new ApiError('شما به این بخش دسترسی ندارید.', 403);
     return $u;
+}
+
+function is_local_request(): bool
+{
+    $host = strtolower(preg_replace('/:\d+$/', '', (string)($_SERVER['HTTP_HOST'] ?? '')));
+    return in_array($host, ['localhost', '127.0.0.1', '[::1]'], true);
 }
 
 function client_ip(): string

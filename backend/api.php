@@ -5,9 +5,6 @@ define('EVENT_APP', true);
 
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
-$logDir = __DIR__ . '/inc/logs';
-if (!is_dir($logDir)) @mkdir($logDir, 0700, true);
-if (is_dir($logDir)) ini_set('error_log', $logDir . '/php-error.log');
 error_reporting(E_ALL);
 
 header('Content-Type: application/json; charset=utf-8');
@@ -26,6 +23,7 @@ const ROUTES = [
     'logout'              => ['h_logout', 'public', 'POST'],
     'me'                  => ['h_me', 'public', 'GET'],
     'update_theme'        => ['h_update_theme', 'user', 'POST'],
+    'change_password'     => ['h_change_password', 'user', 'POST'],
 
     'get_master_data'     => ['h_get_master_data', 'admin', 'GET'],
     'get_colleagues'      => ['h_get_colleagues', 'user', 'GET'],
@@ -60,6 +58,8 @@ $pendingDeletes = [];
 
 try {
     date_default_timezone_set((string)app_config()['timezone']);
+    configure_error_log();
+    if (is_https()) header('Strict-Transport-Security: max-age=15552000');
     $action = (string)($_GET['action'] ?? '');
     if (!isset(ROUTES[$action])) throw new ApiError('وب‌سرویس نامعتبر', 404);
     [$handler, $access, $method] = ROUTES[$action];
@@ -85,11 +85,20 @@ try {
         $input = $_GET;
     }
 
+    // ارسال رمز عبور فقط روی HTTPS (در صورت فعال بودن force_https در تنظیمات)
+    if (in_array($action, ['login', 'change_password'], true) && !is_https() && !empty(app_config()['force_https']) && !is_local_request()) {
+        throw new ApiError('برای امنیت رمز عبور، سایت را با https:// باز کنید.', 403);
+    }
+
     $user = null;
     if ($access === 'user') $user = require_user();
     if ($access === 'admin') $user = require_admin();
+    // کاربری که رمزش ضعیف است تا تغییر رمز، فقط به همین چند عملیات دسترسی دارد
+    if ($user && $user['must_change_password'] && !in_array($action, ['change_password', 'logout', 'me'], true)) {
+        throw new ApiError('ابتدا باید رمز عبور خود را تغییر دهید.', 403);
+    }
     // نوشتن نشست تمام شد؛ قفل فایل نشست آزاد می‌شود تا درخواست‌های موازی معطل نمانند
-    if (!in_array($action, ['login', 'logout'], true)) session_write_close();
+    if (!in_array($action, ['login', 'logout', 'change_password'], true)) session_write_close();
 
     $result = $handler($input, $user);
     json_out($result ?? ['success' => true]);
@@ -151,8 +160,14 @@ function h_login(array $in): array
         throw new ApiError('نام کاربری یا رمز عبور اشتباه است.', 401);
     }
     q('DELETE FROM login_attempts WHERE ip = ?', [$ip]);
+    // رمزهای ضعیف قدیمی (مثل 123456 پیش‌فرض نسخه قبل) => اجبار به تغییر رمز
+    if (password_problem($password, (string)$found['username']) !== null && (int)$found['must_change_password'] !== 1) {
+        q('UPDATE users SET must_change_password = 1 WHERE id = ?', [$found['id']]);
+        $found['must_change_password'] = 1;
+    }
     session_regenerate_id(true);
     $_SESSION['uid'] = (int)$found['id'];
+    $_SESSION['sv'] = (int)$found['session_version'];
     $_SESSION['last_seen'] = time();
     return ['success' => true, 'user' => public_user($found)];
 }
@@ -178,6 +193,26 @@ function h_update_theme(array $in, array $user): array
     $theme = ($in['theme'] ?? '') === 'dark' ? 'dark' : 'light';
     q('UPDATE users SET theme_pref = ? WHERE id = ?', [$theme, $user['id']]);
     return ['success' => true];
+}
+
+/** تغییر رمز توسط خود کاربر: سایر نشست‌های باز او باطل می‌شوند، نشست فعلی حفظ می‌شود */
+function h_change_password(array $in, array $user): array
+{
+    $current = is_string($in['current_password'] ?? null) ? $in['current_password'] : '';
+    $new = is_string($in['new_password'] ?? null) ? $in['new_password'] : '';
+    $row = q_one('SELECT password FROM users WHERE id = ?', [$user['id']]);
+    $hash = (string)($row['password'] ?? '');
+    $isHash = password_get_info($hash)['algo'] !== null;
+    if ($current === '' || !($isHash ? password_verify($current, $hash) : hash_equals($hash, $current))) {
+        throw new ApiError('رمز عبور فعلی اشتباه است.');
+    }
+    if ($problem = password_problem($new, $user['username'])) throw new ApiError($problem);
+    if (hash_equals($current, $new)) throw new ApiError('رمز جدید باید با رمز فعلی متفاوت باشد.');
+    q('UPDATE users SET password = ?, must_change_password = 0, session_version = session_version + 1 WHERE id = ?', [password_hash($new, PASSWORD_DEFAULT), $user['id']]);
+    session_regenerate_id(true);
+    $_SESSION['sv'] = (int)q_val('SELECT session_version FROM users WHERE id = ?', [$user['id']]);
+    forget_current_user();
+    return ['success' => true, 'user' => current_user()];
 }
 
 // ===============================================================
@@ -259,8 +294,7 @@ function save_master_item(string $type, array $in, ?int $id): array
         }
         $hash = null;
         if ($password !== '') {
-            if (mb_strlen($password) < 6) throw new ApiError('رمز عبور باید حداقل ۶ کاراکتر باشد.');
-            if (strlen($password) > 72) throw new ApiError('رمز عبور بیش از حد طولانی است.');
+            if ($problem = password_problem($password, $username)) throw new ApiError($problem);
             $hash = password_hash($password, PASSWORD_DEFAULT);
         } elseif (!$existing) {
             if (!$isShadow) throw new ApiError('برای کاربر فعال، رمز عبور الزامی است.');
@@ -280,9 +314,15 @@ function save_master_item(string $type, array $in, ?int $id): array
             'skills' => jenc(in_str_list($in, 'skills')),
             'can_delegate' => in_bool($in, 'can_delegate') ? 1 : 0,
         ];
-        if ($hash !== null) $fields['password'] = $hash;
+        if ($hash !== null) {
+            $fields['password'] = $hash;
+            // رمزی که مدیر تعیین می‌کند موقت است: کاربر در اولین ورود باید آن را عوض کند
+            if (!$isShadow && $password !== '') $fields['must_change_password'] = 1;
+        }
         if ($id) {
             $set = implode(', ', array_map(fn($k) => "`$k` = ?", array_keys($fields)));
+            // تغییر رمز یا خاموش کردن کاربر => نشست‌های باز او باطل می‌شوند
+            if ($hash !== null || $isShadow) $set .= ', session_version = session_version + 1';
             q("UPDATE users SET $set WHERE id = ?", [...array_values($fields), $id]);
         } else {
             $fields['role'] = 'staff';
