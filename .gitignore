@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.zip
+backend/inc/config.php
+backend/inc/sessions/
+backend/inc/logs/
+backend/uploads/*
+!backend/uploads/.htaccess
+error_log
+.DS_Store

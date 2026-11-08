@@ -1,0 +1,3 @@
+import React, { Component } from 'react';
+
+export class AppErrorBoundary extends Component { constructor(props) { super(props); this.state = { hasError: false, error: null }; } static getDerivedStateFromError(error) { return { hasError: true, error: error }; } render() { if (this.state.hasError) return ( <div className="p-8 text-left text-red-600 bg-red-50 dark:bg-red-900/30 m-5 rounded-xl border border-red-200"><h3 className="font-bold text-xl mb-4">System Crash</h3><pre className="whitespace-pre-wrap">{String(this.state.error)}</pre><button onClick={() => window.location.reload()} className="mt-4 bg-red-600 text-white px-4 py-2 rounded-lg font-bold">بارگذاری مجدد</button></div> ); return this.props.children; } }

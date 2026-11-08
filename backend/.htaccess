@@ -1,0 +1,40 @@
+# ای‌ونت مستر - تنظیمات امنیتی پوشه اصلی
+Options -Indexes
+DirectoryIndex index.html
+
+# جلوگیری از دسترسی به فایل‌های حساس (لاگ‌ها، فایل‌های پشتیبان و ...)
+<FilesMatch "(^\.|^error_log$|\.(log|sql|bak|old|orig|swp|ini|sh|md|lock|json)$)">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# فقط api.php به‌عنوان اسکریپت PHP قابل فراخوانی مستقیم است
+<FilesMatch "\.(php\d?|phtml|phar)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+<Files "api.php">
+    <IfModule mod_authz_core.c>
+        Require all granted
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Allow from all
+    </IfModule>
+</Files>
+
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "same-origin"
+</IfModule>
