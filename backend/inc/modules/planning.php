@@ -12,6 +12,7 @@ $ROUTES += [
     'get_overdue'      => ['h_get_overdue', 'office', 'GET'],
     'duplicate_event'  => ['h_duplicate_event', 'planner', 'POST'],
     'delete_template'  => ['h_delete_template', 'planner', 'POST'],
+    'delete_event'     => ['h_delete_event', 'admin', 'POST'],
 ];
 
 /**
@@ -152,10 +153,44 @@ function h_delete_template(array $in, array $user): array
     $ev = q_one('SELECT * FROM events WHERE id = ? AND is_template = 1', [$id]);
     if (!$ev) throw new ApiError('قالب یافت نشد.', 404);
     if (!$user['is_admin'] && (int)$ev['manager_id'] !== (int)$user['id']) throw new ApiError('فقط سازنده قالب یا مدیر کل می‌تواند آن را حذف کند.', 403);
+    delete_event_cascade($id);
+    return ['success' => true];
+}
+
+/** حذف کامل رویداد با همه داده‌های وابسته (وظایف، پرداخت‌ها، مهمانان، پیوست‌ها و ...) */
+function delete_event_cascade(int $id): void
+{
+    $files = q_all('SELECT stored_name FROM attachments WHERE event_id = ?', [$id]);
+    $delegIds = array_map('intval', array_column(q_all('SELECT id FROM delegations WHERE event_id = ?', [$id]), 'id'));
     $pdo = db();
     $pdo->beginTransaction();
-    foreach (['event_services', 'event_tasks', 'event_logs'] as $t) q("DELETE FROM `$t` WHERE event_id = ?", [$id]);
-    q('DELETE FROM events WHERE id = ?', [$id]);
-    $pdo->commit();
+    try {
+        foreach (['event_services', 'event_tasks', 'event_logs', 'delegations', 'payments', 'event_staff_fees', 'ratings', 'attachments', 'notes', 'guests'] as $t) {
+            q("DELETE FROM `$t` WHERE event_id = ?", [$id]);
+        }
+        q("DELETE FROM notifications WHERE type <> 'delegation' AND ref_id = ?", [$id]);
+        if ($delegIds) {
+            q("DELETE FROM notifications WHERE type = 'delegation' AND ref_id IN (" . implode(',', $delegIds) . ')');
+        }
+        q('DELETE FROM events WHERE id = ?', [$id]);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+    // فایل‌ها پس از ثبت قطعی حذف می‌شوند
+    foreach ($files as $f) @unlink(storage_dir('files') . '/' . basename($f['stored_name']));
+}
+
+/** حذف رویداد (فقط مدیر کل) — عنوان رویداد باید برای تایید عیناً وارد شود */
+function h_delete_event(array $in, array $user): array
+{
+    $id = in_id($in, 'event_id', 'رویداد');
+    $ev = q_one('SELECT id, title FROM events WHERE id = ? AND is_template = 0', [$id]);
+    if (!$ev) throw new ApiError('رویداد یافت نشد.', 404);
+    $typed = trim((string)($in['confirm_title'] ?? ''));
+    if ($typed !== trim((string)$ev['title'])) throw new ApiError('عنوان واردشده با عنوان رویداد یکسان نیست؛ رویداد حذف نشد.');
+    delete_event_cascade($id);
+    error_log("event #{$id} «{$ev['title']}» deleted by {$user['username']}");
     return ['success' => true];
 }

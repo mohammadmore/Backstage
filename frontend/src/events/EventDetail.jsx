@@ -250,6 +250,21 @@ export default function EventDetail({ eventId, onBack, md, user, tab = 'operatio
     };
     const resolveDelegation = (delId, status) => apiCall('resolve_delegation', { delegation_id: delId, status }, status === 'approved' ? 'واگذاری تایید شد.' : 'درخواست رد شد.');
 
+    // ---------- حذف رویداد (فقط مدیر کل) ----------
+    const deleteEvent = async () => {
+        const counts = [data.payments && data.payments.length ? `${toPersianNum(data.payments.length)} پرداخت` : '', Number(data.guest_stats?.total) > 0 ? `${toPersianNum(data.guest_stats.total)} مهمان` : ''].filter(Boolean).join('، ');
+        const v = await formDialog({
+            title: 'حذف دائمی رویداد',
+            message: `رویداد «${ev.title}» با همه وظایف، فاکتور، پرداخت‌ها، دستمزدها، مهمانان، پیوست‌ها و یادداشت‌هایش برای همیشه حذف می‌شود${counts ? ` (از جمله ${counts})` : ''}. این کار قابل بازگشت نیست.\n\nبرای تایید، عنوان رویداد را عیناً وارد کنید.`,
+            fields: [{ name: 'confirm_title', label: 'عنوان رویداد', placeholder: ev.title, required: true }],
+            confirmText: 'حذف دائمی', danger: true,
+        });
+        if (!v) return;
+        if (v.confirm_title.trim() !== String(ev.title).trim()) { toast('عنوان واردشده با عنوان رویداد یکسان نیست؛ رویداد حذف نشد.', 'error'); return; }
+        const r = await api('delete_event', { event_id: ev.id, confirm_title: v.confirm_title.trim() });
+        if (r) { toast('رویداد حذف شد.'); onBack(); }
+    };
+
     // ---------- ویرایش اطلاعات پایه ----------
     const openEditModal = () => {
         setEditForm({ title: ev.title, manager_id: ev.manager_id || '', venue_id: ev.venue_id || '', guest_count: ev.guest_count ?? '', start_date: ev.start_date ? ev.start_date.slice(0, 16).replace(' ', 'T') : '', end_date: ev.end_date ? ev.end_date.slice(0, 16).replace(' ', 'T') : '' });
@@ -287,6 +302,7 @@ export default function EventDetail({ eventId, onBack, md, user, tab = 'operatio
                     {access.tasks && <button type="button" onClick={() => duplicateEvent(ev, false)} className="glass border px-3.5 py-2.5 rounded-xl font-semibold text-sm">کپی رویداد</button>}
                     {access.tasks && <button type="button" onClick={() => duplicateEvent(ev, true)} className="glass border px-3.5 py-2.5 rounded-xl font-semibold text-sm">ذخیره به‌عنوان قالب</button>}
                     {access.tasks && <button type="button" onClick={openEditModal} className="glass border-2 text-slate-700 dark:text-slate-300 px-4 py-2.5 rounded-xl font-semibold hover:bg-white/60 dark:hover:bg-white/10 inline-flex items-center gap-2"><Icons.Edit /> ویرایش اطلاعات</button>}
+                    {user && user.is_admin && <button type="button" onClick={deleteEvent} className="glass border-2 border-red-200 dark:border-red-900/60 text-red-600 dark:text-red-400 px-3.5 py-2.5 rounded-xl font-semibold text-sm hover:bg-red-50 dark:hover:bg-red-900/30 inline-flex items-center gap-1.5"><Icons.Trash /> حذف رویداد</button>}
                     <label className="sr-only" htmlFor="ev-status">وضعیت رویداد</label>
                     <select id="ev-status" disabled={!access.tasks} value={ev.status} onChange={e => apiCall('update_event_status', { status: e.target.value }, 'وضعیت رویداد تغییر کرد.')} className="bg-grad text-white px-4 py-2.5 rounded-xl font-semibold cursor-pointer">
                         {Object.entries(EVENT_STATUS).map(([k, v]) => <option key={k} value={k}>وضعیت: {v.label}</option>)}
