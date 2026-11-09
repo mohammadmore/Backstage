@@ -19,5 +19,5 @@ export const EventTimer = ({ start, end }) => {
         calc(); const timer = setInterval(calc, 60000); return () => clearInterval(timer);
     }, [start, end]);
     const gradients = { upcoming: 'from-blue-600 to-indigo-600', near: 'from-amber-500 to-orange-500 pulse-text', active: 'from-red-500 to-pink-600 pulse-text', done: 'from-emerald-500 to-teal-500' };
-    return ( <div className={`w-full bg-gradient-to-r ${gradients[status]} text-white text-center py-2.5 font-black text-sm md:text-base shadow-md relative z-50`}>{text}</div> );
+    return ( <div className={`w-full bg-gradient-to-r ${gradients[status]} text-white text-center py-2.5 font-semibold text-sm md:text-base shadow-sm relative z-50`}>{text}</div> );
 };

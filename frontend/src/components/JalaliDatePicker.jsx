@@ -44,24 +44,24 @@ export default function JalaliDatePicker({ value, onChange }) {
 
   return (
     <div className="flex flex-wrap gap-2 bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm" dir="ltr">
-      <select value={parts.y} onChange={(e) => update('y', e.target.value)} className={`flex-1 min-w-[70px] ${selCls}`}>
+      <select aria-label="سال" value={parts.y} onChange={(e) => update('y', e.target.value)} className={`flex-1 min-w-[70px] ${selCls}`}>
         <option value="">سال</option>
         {years.map((y) => <option key={y} value={y}>{toPersianNum(y)}</option>)}
       </select>
-      <select value={parts.m} onChange={(e) => update('m', e.target.value)} className={`flex-1 min-w-[90px] ${selCls}`} dir="rtl">
+      <select aria-label="ماه" value={parts.m} onChange={(e) => update('m', e.target.value)} className={`flex-1 min-w-[90px] ${selCls}`} dir="rtl">
         <option value="">ماه</option>
         {JALALI_MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
       </select>
-      <select value={parts.d} onChange={(e) => update('d', e.target.value)} className={`flex-1 min-w-[60px] ${selCls}`}>
+      <select aria-label="روز" value={parts.d} onChange={(e) => update('d', e.target.value)} className={`flex-1 min-w-[60px] ${selCls}`}>
         <option value="">روز</option>
         {[...Array(dayCount)].map((_, i) => <option key={i} value={i + 1}>{toPersianNum(i + 1)}</option>)}
       </select>
       <span className="font-bold text-slate-300 dark:text-slate-600 self-center hidden sm:inline">|</span>
-      <select value={parts.h} onChange={(e) => update('h', e.target.value)} className={`w-16 ${selCls}`}>
+      <select aria-label="ساعت" value={parts.h} onChange={(e) => update('h', e.target.value)} className={`w-16 ${selCls}`}>
         {[...Array(24)].map((_, i) => <option key={i} value={i}>{toPersianNum(String(i).padStart(2, '0'))}</option>)}
       </select>
       <span className="font-bold text-slate-800 dark:text-slate-300 self-center">:</span>
-      <select value={parts.mn} onChange={(e) => update('mn', e.target.value)} className={`w-16 ${selCls}`}>
+      <select aria-label="دقیقه" value={parts.mn} onChange={(e) => update('mn', e.target.value)} className={`w-16 ${selCls}`}>
         {[...Array(60)].map((_, i) => <option key={i} value={i}>{toPersianNum(String(i).padStart(2, '0'))}</option>)}
       </select>
     </div>

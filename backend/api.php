@@ -31,6 +31,7 @@ const ROUTES = [
     'edit_master_item'    => ['h_edit_master_item', 'admin', 'POST'],
     'delete_master_item'  => ['h_delete_master_item', 'admin', 'POST'],
     'update_sort'         => ['h_update_sort', 'admin', 'POST'],
+    'set_order'           => ['h_set_order', 'admin', 'POST'],
 
     'create_event'        => ['h_create_event', 'admin', 'POST'],
     'update_event_details'=> ['h_update_event_details', 'admin', 'POST'],
@@ -43,6 +44,9 @@ const ROUTES = [
     'assign_role'         => ['h_assign_role', 'admin', 'POST'],
     'quick_replace'       => ['h_quick_replace', 'admin', 'POST'],
     'add_quick_task'      => ['h_add_quick_task', 'admin', 'POST'],
+    'update_task_info'    => ['h_update_task_info', 'admin', 'POST'],
+    'delete_task'         => ['h_delete_task', 'admin', 'POST'],
+    'delete_finance_item' => ['h_delete_finance_item', 'admin', 'POST'],
 
     'update_finance_item' => ['h_update_finance_item', 'admin', 'POST'],
     'update_finance_totals'=> ['h_update_finance_totals', 'admin', 'POST'],
@@ -52,6 +56,7 @@ const ROUTES = [
     'resolve_delegation'  => ['h_resolve_delegation', 'admin', 'POST'],
     'get_notifications'   => ['h_get_notifications', 'user', 'GET'],
     'mark_notif_read'     => ['h_mark_notif_read', 'user', 'POST'],
+    'mark_all_notifs_read'=> ['h_mark_all_notifs_read', 'user', 'POST'],
 ];
 
 $pendingDeletes = [];
@@ -458,6 +463,24 @@ function h_delete_master_item(array $in): array
     return ['success' => true];
 }
 
+/** ترتیب کامل جدید (کشیدن و رها کردن): لیست شناسه‌ها باید دقیقاً همه آیتم‌های جدول باشد */
+function h_set_order(array $in): array
+{
+    $type = master_type($in);
+    $table = MASTER_TABLES[$type];
+    $ids = is_array($in['ids'] ?? null) ? array_values(array_map('intval', $in['ids'])) : [];
+    $where = $type === 'staff' ? ' WHERE ' . staff_role_sql() : '';
+    $pdo = db();
+    $pdo->beginTransaction();
+    $current = array_map('intval', $pdo->query("SELECT id FROM `$table`$where FOR UPDATE")->fetchAll(PDO::FETCH_COLUMN));
+    $a = $ids; $b = $current; sort($a); sort($b);
+    if ($a !== $b) throw new ApiError('لیست تغییر کرده است. صفحه را بارگذاری مجدد کنید.', 409);
+    $st = $pdo->prepare("UPDATE `$table` SET sort_order = ? WHERE id = ?");
+    foreach ($ids as $i => $rid) $st->execute([$i + 1, $rid]);
+    $pdo->commit();
+    return ['success' => true];
+}
+
 function h_update_sort(array $in): array
 {
     $type = master_type($in);
@@ -729,6 +752,40 @@ function h_add_quick_task(array $in): array
     return ['success' => true];
 }
 
+/** ویرایش عنوان، نقش و فاز یک وظیفه */
+function h_update_task_info(array $in): array
+{
+    $task = task_with_event(in_id($in, 'task_id', 'وظیفه'));
+    $title = in_str($in, 'title', 255, true, 'عنوان وظیفه');
+    $role = in_str($in, 'role_tag', 100, false, 'نقش');
+    $timing = (string)($in['timing_tag'] ?? '');
+    $timing = in_array($timing, TIMINGS, true) ? $timing : null;
+    q('UPDATE event_tasks SET title = ?, role_tag = ?, timing_tag = ? WHERE id = ?', [$title, $role !== '' ? $role : null, $timing, $task['id']]);
+    $changes = [];
+    if ($task['title'] !== $title) $changes[] = "عنوان به «{$title}»";
+    if ((string)$task['role_tag'] !== $role) $changes[] = 'نقش';
+    if ((string)$task['timing_tag'] !== (string)$timing) $changes[] = 'فاز';
+    if ($changes) log_action((int)$task['event_id'], "وظیفه «{$task['title']}» ویرایش شد: " . implode('، ', $changes) . '.');
+    return ['success' => true];
+}
+
+/** حذف وظیفه: وظایف وابسته آزاد و درخواست‌های واگذاری آن لغو می‌شوند */
+function h_delete_task(array $in): array
+{
+    $task = task_with_event(in_id($in, 'task_id', 'وظیفه'));
+    $pdo = db();
+    $pdo->beginTransaction();
+    q('UPDATE event_tasks SET depends_on_id = NULL WHERE depends_on_id = ?', [$task['id']]);
+    foreach (q_all("SELECT id FROM delegations WHERE task_id = ? AND status = 'pending'", [$task['id']]) as $d) {
+        q("UPDATE notifications SET is_read = 1 WHERE type = 'delegation' AND ref_id = ?", [$d['id']]);
+    }
+    q("UPDATE delegations SET status = 'cancelled' WHERE task_id = ? AND status = 'pending'", [$task['id']]);
+    q('DELETE FROM event_tasks WHERE id = ?', [$task['id']]);
+    log_action((int)$task['event_id'], "وظیفه «{$task['title']}» حذف شد.");
+    $pdo->commit();
+    return ['success' => true];
+}
+
 // ===============================================================
 // مالی
 // ===============================================================
@@ -738,8 +795,19 @@ function h_update_finance_item(array $in): array
     if (!$row) throw new ApiError('ردیف فاکتور یافت نشد.', 404);
     $qty = in_int($in, 'qty', 0, 1000000, 'تعداد') ?? 0;
     $unit = in_money($in, 'unit_price', 'فی');
-    q('UPDATE event_services SET qty = ?, unit_price = ?, frozen_price = ? WHERE id = ?', [$qty, $unit, line_total($unit, $qty), $row['id']]);
-    log_action((int)$row['event_id'], "ردیف فاکتور «{$row['service_name']}» ویرایش شد.");
+    $name = array_key_exists('service_name', $in) ? in_str($in, 'service_name', 100, true, 'شرح خدمات') : $row['service_name'];
+    q('UPDATE event_services SET service_name = ?, qty = ?, unit_price = ?, frozen_price = ? WHERE id = ?', [$name, $qty, $unit, line_total($unit, $qty), $row['id']]);
+    $rename = $name !== $row['service_name'] ? " (شرح جدید: «{$name}»)" : '';
+    log_action((int)$row['event_id'], "ردیف فاکتور «{$row['service_name']}» ویرایش شد{$rename}.");
+    return ['success' => true];
+}
+
+function h_delete_finance_item(array $in): array
+{
+    $row = q_one('SELECT * FROM event_services WHERE id = ?', [in_id($in, 'service_id', 'ردیف فاکتور')]);
+    if (!$row) throw new ApiError('ردیف فاکتور یافت نشد.', 404);
+    q('DELETE FROM event_services WHERE id = ?', [$row['id']]);
+    log_action((int)$row['event_id'], "ردیف فاکتور «{$row['service_name']}» حذف شد.");
     return ['success' => true];
 }
 
@@ -853,5 +921,15 @@ function h_mark_notif_read(array $in, array $user): array
     $id = in_id($in, 'id', 'اعلان');
     $sql = $user['is_admin'] ? 'UPDATE notifications SET is_read = 1 WHERE id = ? AND (user_id = ? OR user_id = 0)' : 'UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?';
     q($sql, [$id, $user['id']]);
+    return ['success' => true];
+}
+
+function h_mark_all_notifs_read(array $in, array $user): array
+{
+    // درخواست‌های واگذاری در انتظار، فقط با تایید/رد بسته می‌شوند
+    $sql = $user['is_admin']
+        ? "UPDATE notifications SET is_read = 1 WHERE (user_id = ? OR user_id = 0) AND type <> 'delegation'"
+        : 'UPDATE notifications SET is_read = 1 WHERE user_id = ?';
+    q($sql, [$user['id']]);
     return ['success' => true];
 }

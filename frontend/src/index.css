@@ -3,18 +3,43 @@
 @tailwind utilities;
 
 * { font-family: 'Vazirmatn', tahoma, sans-serif; }
-.fade-in { animation: fadeIn 0.3s ease-in-out; }
-.slide-down { animation: slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes slideDown { from { opacity: 0; transform: translateY(-20px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+body { -webkit-tap-highlight-color: transparent; }
+
+/* حلقه فوکوس واضح برای کاربران صفحه‌کلید (کلاس outline-none آن را حذف نمی‌کند) */
+*:focus-visible { outline: 3px solid #6366f1 !important; outline-offset: 2px !important; border-radius: 0.5rem; }
+
+.fade-in { animation: fadeIn 0.25s ease-out; }
+.slide-down { animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+.slide-up { animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slideDown { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 .pulse-text { animation: pulse 2s infinite; }
-@keyframes pulse { 0% {opacity: 0.5;} 50% {opacity: 1;} 100% {opacity: 0.5;} }
+@keyframes pulse { 0% {opacity: 0.6;} 50% {opacity: 1;} 100% {opacity: 0.6;} }
+.busy-bar { width: 40%; animation: busy 1s ease-in-out infinite; }
+@keyframes busy { 0% { transform: translateX(260%); } 100% { transform: translateX(-160%); } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+
 .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
 .custom-scroll::-webkit-scrollbar-track { background: transparent; }
 .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
 .custom-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 .dark .custom-scroll::-webkit-scrollbar-thumb { background: #475569; }
 .crop-container { touch-action: none; user-select: none; }
-/* زنجیر خاکستری: ظاهر قفل؛ دکمه‌های مربوطه جداگانه غیرفعال می‌شوند */
-.gray-chain-locked { opacity: 0.6; filter: grayscale(100%); }
-.gray-chain-locked.staff-locked { pointer-events: none; }
+
+/* زنجیر خاکستری: کارت قفل خوانا می‌ماند؛ فقط دکمه‌های مربوطه غیرفعال می‌شوند */
+.gray-chain-locked { border-style: dashed !important; }
+
+/* کشیدن و رها کردن در لیست‌ها */
+.drag-over { box-shadow: 0 -3px 0 0 #6366f1; }
+
+/* چاپ فاکتور */
+#print-area { display: none; }
+@media print {
+  body > #root, body > #ui-host { display: none !important; }
+  #print-area { display: block !important; }
+  @page { size: A4; margin: 14mm; }
+  body { background: #fff !important; }
+}

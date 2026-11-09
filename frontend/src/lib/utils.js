@@ -1,3 +1,5 @@
+import { toast } from './ui';
+
 // ---------------------------------------------------------------
 // اعداد
 // ---------------------------------------------------------------
@@ -97,7 +99,7 @@ export const safeJson = (s, fallback = []) => {
  * @param {{key: string, label: string}[]=} columns ستون‌های خروجی (پیش‌فرض: همه کلیدها)
  */
 export const exportToCSV = (dataList, filename, columns) => {
-  if (!dataList || dataList.length === 0) return alert('داده‌ای برای خروجی وجود ندارد.');
+  if (!dataList || dataList.length === 0) return toast('داده‌ای برای خروجی وجود ندارد.', 'warning');
   const cols = columns || Object.keys(dataList[0]).map((k) => ({ key: k, label: k }));
   const cell = (v) => {
     let s = v === null || v === undefined ? '' : String(v);
@@ -115,4 +117,44 @@ export const exportToCSV = (dataList, filename, columns) => {
   link.click();
   document.body.removeChild(link);
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+};
+
+// ---------------------------------------------------------------
+// تم (در مرورگر ذخیره می‌شود تا صفحه ورود هم همان تم را داشته باشد)
+// ---------------------------------------------------------------
+export const applyTheme = (t) => {
+  if (t === 'dark') document.documentElement.classList.add('dark'); else document.documentElement.classList.remove('dark');
+  try { localStorage.setItem('evm_theme', t); } catch (e) { /* حالت خصوصی */ }
+};
+export const currentTheme = () => (document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+
+/** فاز جاری رویداد بر اساس زمان */
+export const detectPhase = (ev) => {
+  const now = new Date();
+  const st = parseDate(ev.start_date);
+  const en = parseDate(ev.end_date);
+  if (!st) return TIMINGS[0];
+  if (en && now >= st && now <= en) return 'روز رویداد';
+  if (en && now > en) return 'پایان رویداد';
+  if (st - now > 0 && st - now < 24 * 60 * 60 * 1000) return 'روز قبل از رویداد';
+  if (!en && now >= st) return 'روز رویداد';
+  return TIMINGS[0];
+};
+
+/** رویداد تمام‌شده؟ (وضعیت پایان‌یافته یا گذشتن بیش از یک هفته از پایان) */
+export const isEventOver = (ev) => {
+  if (ev.status === 'completed') return true;
+  const en = parseDate(ev.end_date);
+  return !!en && Date.now() - en.getTime() > 7 * 24 * 3600 * 1000;
+};
+
+/** جستجوی فارسی: یکسان‌سازی ی/ک عربی، نیم‌فاصله و ارقام */
+export const normalizeSearch = (s) => toEnDigits(String(s ?? ''))
+  .replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/‌/g, ' ').replace(/\s+/g, ' ')
+  .trim().toLowerCase();
+export const matches = (query, ...fields) => {
+  const q = normalizeSearch(query);
+  if (!q) return true;
+  const hay = normalizeSearch(fields.join(' '));
+  return q.split(' ').every((w) => hay.includes(w));
 };
