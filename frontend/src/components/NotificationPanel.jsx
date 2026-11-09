@@ -40,8 +40,8 @@ export default function NotificationPanel({ notifs, onRead, onReadAll, onOpen, r
                 {count > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center">{toPersianNum(count > 99 ? '99+' : count)}</span>}
             </button>
             {open && (
-                <div className="absolute left-0 top-12 w-[calc(100vw-2rem)] max-w-[420px] bg-white dark:bg-slate-800 rounded-2xl shadow-sm z-50 border border-slate-200 dark:border-slate-700 fade-in text-slate-800 dark:text-slate-100" role="region" aria-label="اعلان‌ها">
-                    <div className="flex justify-between items-center px-4 py-3 border-b dark:border-slate-700">
+                <div className="glass absolute left-0 top-12 w-[calc(100vw-2rem)] max-w-[420px] rounded-2xl z-50 border fade-in text-slate-800 dark:text-slate-100" role="region" aria-label="اعلان‌ها">
+                    <div className="flex justify-between items-center px-4 py-3 border-b dark:border-white/10">
                         <h2 className="font-bold">اعلان‌ها {count > 0 && <span className="text-sm font-normal text-slate-500">({toPersianNum(count)})</span>}</h2>
                         <div className="flex items-center gap-2">
                             {readable.length > 0 && <button type="button" onClick={onReadAll} className="text-xs font-semibold text-indigo-700 dark:text-indigo-400 hover:underline">همه خوانده شد</button>}
@@ -54,7 +54,7 @@ export default function NotificationPanel({ notifs, onRead, onReadAll, onOpen, r
                             const evId = notifEventId(n);
                             const actions = renderActions && renderActions(n);
                             return (
-                                <li key={n.id} className={`p-3 rounded-xl text-sm border ${TYPE_STYLE[n.type] || 'bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600'}`}>
+                                <li key={n.id} className={`p-3 rounded-xl text-sm border ${TYPE_STYLE[n.type] || 'glass-soft'}`}>
                                     <div className="flex gap-2 items-start">
                                         <span className="mt-0.5 shrink-0 opacity-70"><Icons.Alert /></span>
                                         <div className="flex-1 min-w-0">
@@ -63,7 +63,7 @@ export default function NotificationPanel({ notifs, onRead, onReadAll, onOpen, r
                                             ) : <p className="leading-relaxed">{toPersianNum(n.message)}</p>}
                                             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1" dir="ltr">{toJalaliDateTime(n.created_at)}</p>
                                         </div>
-                                        {!actions && <button type="button" onClick={() => onRead(n.id)} title="خوانده شد" aria-label="علامت خوانده‌شده" className="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-green-600 hover:bg-white dark:hover:bg-slate-800"><Icons.Check /></button>}
+                                        {!actions && <button type="button" onClick={() => onRead(n.id)} title="خوانده شد" aria-label="علامت خوانده‌شده" className="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-green-600 hover:bg-white dark:hover:bg-white/10"><Icons.Check /></button>}
                                     </div>
                                     {actions}
                                 </li>

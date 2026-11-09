@@ -18,6 +18,6 @@ export const EventTimer = ({ start, end }) => {
         };
         calc(); const timer = setInterval(calc, 60000); return () => clearInterval(timer);
     }, [start, end]);
-    const gradients = { upcoming: 'from-blue-600 to-indigo-600', near: 'from-amber-500 to-orange-500 pulse-text', active: 'from-red-500 to-pink-600 pulse-text', done: 'from-emerald-500 to-teal-500' };
-    return ( <div className={`w-full bg-gradient-to-r ${gradients[status]} text-white text-center py-2.5 font-semibold text-sm md:text-base shadow-sm relative z-50`}>{text}</div> );
+    const gradients = { upcoming: 'from-fuchsia-500/85 via-violet-500/85 to-blue-500/85', near: 'from-amber-500/90 via-pink-500/90 to-fuchsia-500/90 pulse-text', active: 'from-pink-600/90 via-rose-500/90 to-fuchsia-600/90 pulse-text', done: 'from-emerald-500/85 via-teal-500/85 to-sky-500/85' };
+    return ( <div className={`w-full bg-gradient-to-r ${gradients[status]} text-white text-center py-2.5 font-semibold text-sm md:text-base relative z-50 backdrop-blur-md border-b border-white/20`}>{text}</div> );
 };

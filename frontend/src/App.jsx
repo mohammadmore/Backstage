@@ -12,7 +12,7 @@ import MasterData, { MASTER_TABS } from './master/MasterData';
 import ChangePassword from './components/ChangePassword';
 import NotificationPanel from './components/NotificationPanel';
 
-const inputCls = 'w-full border-2 border-slate-200 dark:border-slate-600 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-700 text-center font-semibold focus:border-indigo-500 dark:text-white';
+const inputCls = 'glass-soft w-full border-2 p-3.5 rounded-2xl text-center font-semibold focus:border-indigo-500 dark:text-white';
 
 function LoginForm({ onSubmit, busy, username = '', lockUser = false }) {
     return (
@@ -21,7 +21,7 @@ function LoginForm({ onSubmit, busy, username = '', lockUser = false }) {
             <input id={lockUser ? 'relogin-u' : 'login-u'} name="u" type="text" autoComplete="username" placeholder="نام کاربری" defaultValue={username} readOnly={lockUser} className={inputCls} dir="ltr" />
             <label className="sr-only" htmlFor={lockUser ? 'relogin-p' : 'login-p'}>رمز عبور</label>
             <input id={lockUser ? 'relogin-p' : 'login-p'} name="p" type="password" autoComplete="current-password" placeholder="رمز عبور" autoFocus={lockUser} className={inputCls} dir="ltr" />
-            <button type="submit" disabled={busy} className="w-full bg-indigo-600 text-white p-3.5 rounded-2xl font-bold text-lg hover:bg-indigo-700 disabled:opacity-60 mt-3 active:scale-[0.98]">{busy ? 'در حال ورود...' : 'ورود به سیستم'}</button>
+            <button type="submit" disabled={busy} className="btn-grad w-full text-white p-3.5 rounded-2xl font-bold text-lg disabled:opacity-60 mt-3 active:scale-[0.98]">{busy ? 'در حال ورود...' : 'ورود به سیستم'}</button>
         </form>
     );
 }
@@ -129,13 +129,13 @@ export default function App() {
     if (booting) return <div className="p-10 text-center"><h2 className="text-indigo-600 dark:text-indigo-400 text-xl font-bold pulse-text">در حال راه‌اندازی سیستم...</h2></div>;
 
     if (!user) return (
-        <div className="flex items-center justify-center min-h-screen bg-slate-900 px-4">
+        <div className="flex items-center justify-center min-h-screen px-4">
             <div className="absolute top-4 left-4">
-                <button type="button" onClick={() => { const t = theme === 'light' ? 'dark' : 'light'; setTheme(t); applyTheme(t); }} className="p-2 text-slate-300 hover:text-white rounded-full hover:bg-white/10" aria-label={theme === 'dark' ? 'پوسته روشن' : 'پوسته تیره'}>{theme === 'dark' ? <Icons.Sun /> : <Icons.Moon />}</button>
+                <button type="button" onClick={() => { const t = theme === 'light' ? 'dark' : 'light'; setTheme(t); applyTheme(t); }} className="glass p-2.5 text-violet-700 dark:text-violet-200 rounded-full border" aria-label={theme === 'dark' ? 'پوسته روشن' : 'پوسته تیره'}>{theme === 'dark' ? <Icons.Sun /> : <Icons.Moon />}</button>
             </div>
-            <main className="bg-white dark:bg-slate-800 p-8 sm:p-10 rounded-[2rem] shadow-sm w-full max-w-md text-center fade-in border-t-8 border-indigo-600">
-                <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center mx-auto mb-4"><Icons.Tent /></div>
-                <h1 className="text-2xl font-bold mb-7 text-slate-800 dark:text-white">ای‌ونت مستر</h1>
+            <main className="glass grad-top p-8 sm:p-10 rounded-[2rem] w-full max-w-md text-center fade-in border">
+                <div className="w-16 h-16 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center mx-auto mb-4 bg-grad-soft"><Icons.Tent /></div>
+                <h1 className="text-3xl font-bold mb-7 text-grad">ای‌ونت مستر</h1>
                 <LoginForm onSubmit={login} busy={loggingIn} />
             </main>
         </div>
@@ -148,8 +148,8 @@ export default function App() {
         <>
             {showPwd && <ChangePassword user={user} onDone={(u) => { setShowPwd(false); if (u) setUser(u); }} onCancel={() => setShowPwd(false)} />}
             {sessionExpired && (
-                <div className="fixed inset-0 z-[380] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="relogin-title">
-                    <div className="bg-white dark:bg-slate-800 p-7 rounded-3xl w-full max-w-sm text-center shadow-sm">
+                <div className="fixed inset-0 z-[380] glass-overlay flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="relogin-title">
+                    <div className="glass-strong grad-top p-7 rounded-3xl w-full max-w-sm text-center">
                         <h2 id="relogin-title" className="text-lg font-bold text-slate-800 dark:text-white mb-2">نشست شما منقضی شده است</h2>
                         <p className="text-sm text-slate-600 dark:text-slate-300 mb-5 leading-relaxed">برای ادامه دوباره وارد شوید. اطلاعات این صفحه حفظ می‌شود.</p>
                         <LoginForm onSubmit={login} busy={loggingIn} username={user.username} lockUser />
@@ -167,39 +167,39 @@ export default function App() {
     const detailId = section === 'events' && sub && /^\d+$/.test(sub) ? Number(sub) : null;
     const detailTab = DETAIL_TABS.some(t => t.id === sub2) ? sub2 : 'operations';
     const masterTab = MASTER_TABS.some(t => t.id === sub) ? sub : 'categories';
-    const navBtn = (active) => `px-4 py-2 rounded-lg font-semibold text-sm transition-colors ${active ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:text-white hover:bg-slate-700'}`;
+    const navBtn = (active) => `px-4 py-2 rounded-lg font-semibold text-sm transition-colors ${active ? 'bg-white text-violet-700 shadow-sm' : 'on-nav'}`;
 
     const delegationActions = (n) => (n.type === 'delegation' && n.deleg_status === 'pending' && n.from_name) ? (
         <div className="flex gap-2 mt-3 pt-3 border-t border-blue-200/60 dark:border-blue-700/50">
             <button type="button" onClick={() => resolveDelegation(n.ref_id, 'approved')} className="flex-1 bg-green-600 text-white font-semibold py-2 rounded-lg hover:bg-green-700 text-sm">تایید واگذاری</button>
-            <button type="button" onClick={() => resolveDelegation(n.ref_id, 'rejected')} className="flex-1 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 font-semibold py-2 rounded-lg hover:bg-slate-50 text-sm">رد درخواست</button>
+            <button type="button" onClick={() => resolveDelegation(n.ref_id, 'rejected')} className="glass flex-1 text-slate-700 dark:text-slate-300 border font-semibold py-2 rounded-lg hover:bg-white/60 text-sm">رد درخواست</button>
         </div>
     ) : null;
 
     return (
-        <div className="min-h-screen flex flex-col bg-slate-100 dark:bg-slate-900">
-            <header className="bg-slate-900 text-white px-4 shadow flex justify-between items-center z-40 sticky top-0 h-[72px] sm:h-[76px] gap-2">
+        <div className="min-h-screen flex flex-col">
+            <header className="glass-nav text-white px-4 flex justify-between items-center z-40 sticky top-0 h-[72px] sm:h-[76px] gap-2">
                 <div className="flex items-center gap-5">
-                    <a href="#/events" className="font-bold text-lg flex items-center gap-2" aria-label="ای‌ونت مستر - رویدادها"><span className="text-indigo-300 bg-indigo-900/50 p-1.5 rounded-lg"><Icons.Tent /></span> <span className="hidden sm:block">ای‌ونت مستر</span></a>
-                    <nav className="hidden md:flex gap-1 bg-slate-800 p-1 rounded-xl" aria-label="بخش‌ها">
+                    <a href="#/events" className="font-bold text-lg flex items-center gap-2" aria-label="ای‌ونت مستر - رویدادها"><span className="text-white bg-white/20 p-1.5 rounded-lg"><Icons.Tent /></span> <span className="hidden sm:block">ای‌ونت مستر</span></a>
+                    <nav className="hidden md:flex gap-1 p-1 rounded-xl bg-white/15" aria-label="بخش‌ها">
                         <a href="#/events" aria-current={view === 'EVENTS' ? 'page' : undefined} className={navBtn(view === 'EVENTS')}>رویدادها</a>
                         <a href={`#/master/${masterTab}`} aria-current={view === 'MASTER' ? 'page' : undefined} className={navBtn(view === 'MASTER')}>مدیریت دیتابیس‌ها</a>
                     </nav>
                 </div>
                 <div className="flex items-center gap-1.5 sm:gap-2">
                     <NotificationPanel onRefresh={fetchNotifs} notifs={notifs} onRead={markNotifRead} onReadAll={markAllRead} onOpen={(evId) => navigate(`events/${evId}`)} renderActions={delegationActions} />
-                    <button type="button" onClick={toggleTheme} className="p-2 text-indigo-100 hover:text-white rounded-full hover:bg-white/10" aria-label={theme === 'dark' ? 'پوسته روشن' : 'پوسته تیره'} title="تغییر پوسته">{theme === 'dark' ? <Icons.Sun /> : <Icons.Moon />}</button>
-                    <button type="button" onClick={() => setShowPwd(true)} className="p-2 text-indigo-100 hover:text-white rounded-full hover:bg-white/10" aria-label="تغییر رمز عبور" title="تغییر رمز عبور"><Icons.Key /></button>
-                    <div className="hidden sm:flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-full border border-slate-700">
-                        {user.avatar ? <img src={user.avatar} className="w-7 h-7 rounded-full object-cover bg-white" alt="" /> : <span className="w-7 h-7 rounded-full bg-slate-600 flex items-center justify-center"><Icons.Users /></span>}
-                        <span className="text-sm text-slate-200">{toPersianNum(user.full_name)}</span>
+                    <button type="button" onClick={toggleTheme} className="p-2 on-nav rounded-full" aria-label={theme === 'dark' ? 'پوسته روشن' : 'پوسته تیره'} title="تغییر پوسته">{theme === 'dark' ? <Icons.Sun /> : <Icons.Moon />}</button>
+                    <button type="button" onClick={() => setShowPwd(true)} className="p-2 on-nav rounded-full" aria-label="تغییر رمز عبور" title="تغییر رمز عبور"><Icons.Key /></button>
+                    <div className="hidden sm:flex items-center gap-2 bg-white/15 px-3 py-1.5 rounded-full border border-white/25">
+                        {user.avatar ? <img src={user.avatar} className="w-7 h-7 rounded-full object-cover bg-white" alt="" /> : <span className="w-7 h-7 rounded-full flex items-center justify-center bg-white/20"><Icons.Users /></span>}
+                        <span className="text-sm text-white">{toPersianNum(user.full_name)}</span>
                     </div>
-                    <button type="button" onClick={logout} className="text-red-300 font-semibold bg-red-400/10 px-3 py-2 rounded-lg hover:bg-red-500 hover:text-white text-sm">خروج</button>
+                    <button type="button" onClick={logout} className="text-white font-semibold bg-white/15 border border-white/25 px-3 py-2 rounded-lg hover:bg-red-500 hover:border-red-500 text-sm">خروج</button>
                 </div>
             </header>
-            <nav className="md:hidden flex bg-slate-800 p-2 gap-2 z-30 relative" aria-label="بخش‌ها">
-                <a href="#/events" aria-current={view === 'EVENTS' ? 'page' : undefined} className={`flex-1 text-center py-2.5 rounded-xl font-semibold text-sm text-white ${view === 'EVENTS' ? 'bg-indigo-600' : 'bg-slate-700'}`}>رویدادها</a>
-                <a href={`#/master/${masterTab}`} aria-current={view === 'MASTER' ? 'page' : undefined} className={`flex-1 text-center py-2.5 rounded-xl font-semibold text-sm text-white ${view === 'MASTER' ? 'bg-indigo-600' : 'bg-slate-700'}`}>دیتابیس‌ها</a>
+            <nav className="glass-nav md:hidden flex p-2 gap-2 z-30 relative" aria-label="بخش‌ها">
+                <a href="#/events" aria-current={view === 'EVENTS' ? 'page' : undefined} className={`flex-1 text-center py-2.5 rounded-xl font-semibold text-sm ${view === 'EVENTS' ? 'bg-white text-violet-700' : 'bg-white/15 text-white'}`}>رویدادها</a>
+                <a href={`#/master/${masterTab}`} aria-current={view === 'MASTER' ? 'page' : undefined} className={`flex-1 text-center py-2.5 rounded-xl font-semibold text-sm ${view === 'MASTER' ? 'bg-white text-violet-700' : 'bg-white/15 text-white'}`}>دیتابیس‌ها</a>
             </nav>
 
             <main className="flex-1 w-full max-w-[100rem] mx-auto relative p-4 md:p-8 pt-0 md:pt-0">

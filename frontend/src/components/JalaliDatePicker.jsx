@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { toPersianNum, g2j, j2g, jalaliMonthLength, JALALI_MONTHS, parseDate, toInputDateTime } from '../lib/utils';
 
-const selCls = 'border border-slate-200 dark:border-slate-600 p-2 rounded-lg bg-slate-50 dark:bg-slate-700 dark:text-white outline-none font-bold text-sm text-center cursor-pointer';
+const selCls = 'glass-soft border p-2 rounded-lg dark:text-white outline-none font-bold text-sm text-center cursor-pointer';
 
 /**
  * انتخابگر تاریخ و ساعت شمسی.
@@ -43,7 +43,7 @@ export default function JalaliDatePicker({ value, onChange }) {
   const dayCount = parts.y && parts.m ? jalaliMonthLength(parts.y, parts.m) : 31;
 
   return (
-    <div className="flex flex-wrap gap-2 bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm" dir="ltr">
+    <div className="glass flex flex-wrap gap-2 p-2.5 rounded-xl border" dir="ltr">
       <select aria-label="سال" value={parts.y} onChange={(e) => update('y', e.target.value)} className={`flex-1 min-w-[70px] ${selCls}`}>
         <option value="">سال</option>
         {years.map((y) => <option key={y} value={y}>{toPersianNum(y)}</option>)}

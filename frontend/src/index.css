@@ -2,11 +2,128 @@
 @tailwind components;
 @tailwind utilities;
 
+/* =================================================================
+   سیستم طراحی: گلسمورفیسم با گرادیانت صورتی / بنفش / آبی
+   همه سطح‌ها از این توکن‌ها استفاده می‌کنند تا تغییر ظاهر از یک‌جا انجام شود.
+   ================================================================= */
+:root {
+  --c-pink: #ec4899;
+  --c-purple: #8b5cf6;
+  --c-blue: #3b82f6;
+  --grad: linear-gradient(135deg, var(--c-pink) 0%, var(--c-purple) 50%, var(--c-blue) 100%);
+  --grad-soft: linear-gradient(135deg, rgba(236, 72, 153, .14), rgba(139, 92, 246, .14), rgba(59, 130, 246, .14));
+
+  --glass-bg: rgba(255, 255, 255, .58);
+  --glass-soft-bg: rgba(237, 233, 254, .55);
+  --glass-field-bg: rgba(255, 255, 255, .72);
+  --glass-strong-bg: rgba(255, 255, 255, .86);
+  --glass-border: rgba(255, 255, 255, .7);
+  --glass-line: rgba(139, 92, 246, .16);
+  --glass-shadow: 0 8px 32px rgba(91, 33, 182, .10), inset 0 1px 0 rgba(255, 255, 255, .6);
+  --page-base: #f6f2ff;
+}
+.dark {
+  --glass-bg: rgba(30, 24, 66, .52);
+  --glass-soft-bg: rgba(255, 255, 255, .06);
+  --glass-field-bg: rgba(15, 12, 41, .55);
+  --glass-strong-bg: rgba(24, 18, 56, .9);
+  --glass-border: rgba(255, 255, 255, .10);
+  --glass-line: rgba(196, 181, 253, .14);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(255, 255, 255, .06);
+  --page-base: #0b0820;
+}
+
 * { font-family: 'Vazirmatn', tahoma, sans-serif; }
-body { -webkit-tap-highlight-color: transparent; }
+html { background: var(--page-base); }
+body { -webkit-tap-highlight-color: transparent; background: transparent !important; min-height: 100vh; }
+
+/* پس‌زمینه ثابت: لکه‌های رنگی محو که از پشت شیشه‌ها دیده می‌شوند */
+body::before {
+  content: ''; position: fixed; inset: -10%; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(40% 45% at 8% 12%, rgba(236, 72, 153, .42), transparent 70%),
+    radial-gradient(38% 42% at 92% 8%, rgba(59, 130, 246, .40), transparent 70%),
+    radial-gradient(45% 50% at 55% 95%, rgba(139, 92, 246, .45), transparent 70%),
+    radial-gradient(30% 35% at 85% 70%, rgba(236, 72, 153, .22), transparent 70%),
+    linear-gradient(135deg, #fdf2f8 0%, #f3e8ff 45%, #e0f2fe 100%);
+  animation: bg-drift 30s ease-in-out infinite alternate;
+}
+.dark body::before {
+  background:
+    radial-gradient(40% 45% at 8% 12%, rgba(236, 72, 153, .30), transparent 70%),
+    radial-gradient(38% 42% at 92% 8%, rgba(59, 130, 246, .28), transparent 70%),
+    radial-gradient(45% 50% at 55% 95%, rgba(139, 92, 246, .34), transparent 70%),
+    radial-gradient(30% 35% at 85% 70%, rgba(236, 72, 153, .14), transparent 70%),
+    linear-gradient(135deg, #1a0f2e 0%, #110b2b 50%, #0a1430 100%);
+}
+@keyframes bg-drift { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(-2%, 2%, 0) scale(1.05); } }
+
+@layer components {
+  /* سطح اصلی (کارت‌ها، پنل‌ها، پنجره‌ها) */
+  .glass {
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: blur(18px) saturate(170%);
+    backdrop-filter: blur(18px) saturate(170%);
+    border-color: var(--glass-border);
+    box-shadow: var(--glass-shadow);
+  }
+  /* پنجره‌ها و ویزارد: شیشه پررنگ‌تر تا محتوای پشت، خوانایی را کم نکند */
+  .glass-strong {
+    background: var(--glass-strong-bg);
+    -webkit-backdrop-filter: blur(28px) saturate(170%);
+    backdrop-filter: blur(28px) saturate(170%);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 24px 60px rgba(76, 29, 149, .28), inset 0 1px 0 rgba(255, 255, 255, .6);
+  }
+  /* لایه پشت پنجره‌ها */
+  .glass-overlay { background: rgba(30, 16, 70, .35); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+  /* نوار رنگی بالای کارت‌ها */
+  .grad-top { position: relative; overflow: hidden; }
+  .grad-top::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 6px; background-image: var(--grad); }
+  /* عناصر روی هدر گرادیانت */
+  .on-nav { color: rgba(255, 255, 255, .92); }
+  .on-nav:hover { color: #fff; background: rgba(255, 255, 255, .18); }
+  /* سطح داخلی (ردیف‌ها، چیپ‌ها، بخش‌های درون کارت) */
+  .glass-soft {
+    background: var(--glass-soft-bg);
+    border-color: var(--glass-line);
+  }
+  /* فیلدهای ورودی: کمی کدرتر برای خوانایی */
+  .glass-field {
+    background: var(--glass-field-bg);
+    border-color: var(--glass-line);
+  }
+  .glass-field:focus { border-color: var(--c-purple) !important; box-shadow: 0 0 0 4px rgba(139, 92, 246, .15); }
+  /* هدر و نوار ناوبری: شیشه رنگی گرادیانت */
+  .glass-nav {
+    background: linear-gradient(90deg, rgba(236, 72, 153, .78), rgba(139, 92, 246, .80), rgba(59, 130, 246, .78));
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid rgba(255, 255, 255, .25);
+    box-shadow: 0 6px 24px rgba(91, 33, 182, .25);
+  }
+  .dark .glass-nav { background: linear-gradient(90deg, rgba(131, 24, 67, .70), rgba(76, 29, 149, .72), rgba(30, 58, 138, .70)); }
+  /* پنل تیره (جمع فاکتور، جایگزینی سریع، سربرگ رویداد کارمند) */
+  .glass-ink {
+    background: linear-gradient(135deg, rgba(76, 29, 149, .88), rgba(49, 46, 129, .86), rgba(30, 58, 138, .88));
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+    border: 1px solid rgba(255, 255, 255, .14);
+    box-shadow: 0 10px 34px rgba(49, 46, 129, .35);
+    color: #fff;
+  }
+  /* دکمه و نشان اصلی */
+  .bg-grad { background-image: var(--grad); color: #fff; }
+  .bg-grad:hover:not(:disabled) { filter: brightness(1.08) saturate(1.1); }
+  .btn-grad { background-image: var(--grad); color: #fff; box-shadow: 0 6px 20px rgba(139, 92, 246, .35); transition: filter .15s, transform .15s, box-shadow .15s; }
+  .btn-grad:hover:not(:disabled) { filter: brightness(1.08) saturate(1.1); box-shadow: 0 8px 26px rgba(236, 72, 153, .35); }
+  .bg-grad-soft { background-image: var(--grad-soft); }
+  .text-grad { background-image: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .ring-grad { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--c-purple); }
+}
 
 /* حلقه فوکوس واضح برای کاربران صفحه‌کلید (کلاس outline-none آن را حذف نمی‌کند) */
-*:focus-visible { outline: 3px solid #6366f1 !important; outline-offset: 2px !important; border-radius: 0.5rem; }
+*:focus-visible { outline: 3px solid var(--c-purple) !important; outline-offset: 2px !important; border-radius: 0.5rem; }
 
 .fade-in { animation: fadeIn 0.25s ease-out; }
 .slide-down { animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
@@ -16,24 +133,28 @@ body { -webkit-tap-highlight-color: transparent; }
 @keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 .pulse-text { animation: pulse 2s infinite; }
 @keyframes pulse { 0% {opacity: 0.6;} 50% {opacity: 1;} 100% {opacity: 0.6;} }
-.busy-bar { width: 40%; animation: busy 1s ease-in-out infinite; }
+.busy-bar { width: 40%; background-image: var(--grad); animation: busy 1s ease-in-out infinite; }
 @keyframes busy { 0% { transform: translateX(260%); } 100% { transform: translateX(-160%); } }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+/* دستگاه‌های ضعیف یا مرورگرهای بدون پشتیبانی blur: شیشه کدرتر تا متن خوانا بماند */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root { --glass-bg: rgba(255, 255, 255, .92); --glass-soft-bg: rgba(255, 255, 255, .7); }
+  .dark { --glass-bg: rgba(30, 24, 66, .94); }
+}
 
 .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
 .custom-scroll::-webkit-scrollbar-track { background: transparent; }
-.custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-.custom-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-.dark .custom-scroll::-webkit-scrollbar-thumb { background: #475569; }
+.custom-scroll::-webkit-scrollbar-thumb { background: rgba(139, 92, 246, .35); border-radius: 10px; }
+.custom-scroll::-webkit-scrollbar-thumb:hover { background: rgba(139, 92, 246, .6); }
 .crop-container { touch-action: none; user-select: none; }
 
 /* زنجیر خاکستری: کارت قفل خوانا می‌ماند؛ فقط دکمه‌های مربوطه غیرفعال می‌شوند */
 .gray-chain-locked { border-style: dashed !important; }
 
 /* کشیدن و رها کردن در لیست‌ها */
-.drag-over { box-shadow: 0 -3px 0 0 #6366f1; }
+.drag-over { box-shadow: 0 -3px 0 0 var(--c-pink); }
 
 /* چاپ فاکتور */
 #print-area { display: none; }
@@ -41,5 +162,6 @@ body { -webkit-tap-highlight-color: transparent; }
   body > #root, body > #ui-host { display: none !important; }
   #print-area { display: block !important; }
   @page { size: A4; margin: 14mm; }
-  body { background: #fff !important; }
+  html, body { background: #fff !important; }
+  body::before { display: none; }
 }

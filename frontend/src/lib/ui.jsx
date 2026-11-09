@@ -44,7 +44,7 @@ const TOAST_STYLE = {
   success: 'bg-emerald-600 text-white',
   error: 'bg-red-600 text-white',
   warning: 'bg-amber-500 text-amber-950',
-  info: 'bg-slate-800 text-white dark:bg-slate-700',
+  info: 'glass-ink text-white',
 };
 
 function Dialog({ d }) {
@@ -71,11 +71,11 @@ function Dialog({ d }) {
     d.resolve(out);
   };
   const cancel = () => d.resolve(d.kind === 'confirm' ? false : null);
-  const inputCls = 'w-full border-2 border-slate-200 dark:border-slate-600 p-3 rounded-xl bg-white dark:bg-slate-700 dark:text-white focus:border-indigo-500';
+  const inputCls = 'glass w-full border-2 p-3 rounded-xl dark:text-white focus:border-indigo-500';
 
   return (
-    <div className="fixed inset-0 z-[400] bg-slate-900/70 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4 fade-in" onMouseDown={(e) => { if (e.target === e.currentTarget) cancel(); }}>
-      <form onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby={`dlg-${d.id}`} className="bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-sm p-6 sm:p-7">
+    <div className="fixed inset-0 z-[400] glass-overlay flex items-end sm:items-center justify-center sm:p-4 fade-in" onMouseDown={(e) => { if (e.target === e.currentTarget) cancel(); }}>
+      <form onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby={`dlg-${d.id}`} className="glass-strong w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 sm:p-7">
         <h3 id={`dlg-${d.id}`} className="text-lg font-bold text-slate-800 dark:text-white mb-2">{d.title}</h3>
         {d.message && <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-line mb-4">{d.message}</p>}
         {d.kind === 'form' && (
@@ -100,8 +100,8 @@ function Dialog({ d }) {
         )}
         {error && <p className="text-sm font-semibold text-red-600 mb-2" role="alert">{error}</p>}
         <div className="flex gap-3 mt-5">
-          <button type="button" onClick={cancel} className="flex-1 py-3 rounded-xl font-semibold bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600">{d.cancelText}</button>
-          <button ref={okRef} type="submit" className={`flex-1 py-3 rounded-xl font-bold text-white ${d.danger ? 'bg-red-600 hover:bg-red-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}>{d.confirmText}</button>
+          <button type="button" onClick={cancel} className="glass-soft flex-1 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 hover:bg-white/60 dark:hover:bg-white/10">{d.cancelText}</button>
+          <button ref={okRef} type="submit" className={`flex-1 py-3 rounded-xl font-bold text-white ${d.danger ? 'bg-red-600 hover:bg-red-700' : 'bg-grad'}`}>{d.confirmText}</button>
         </div>
       </form>
     </div>

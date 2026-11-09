@@ -45,11 +45,11 @@ export default function ImageCropper({ src, onComplete, onCancel, type = 'avatar
     };
 
     return (
-        <div className="fixed inset-0 z-[350] bg-slate-900/90 flex flex-col items-center justify-center p-4 fade-in crop-container" role="dialog" aria-modal="true" aria-label="برش عکس">
-            <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl w-full max-w-sm text-center flex flex-col">
+        <div className="fixed inset-0 z-[350] glass-overlay flex flex-col items-center justify-center p-4 fade-in crop-container" role="dialog" aria-modal="true" aria-label="برش عکس">
+            <div className="glass-strong p-6 rounded-3xl w-full max-w-sm text-center flex flex-col">
                 <h3 className="font-bold text-slate-800 dark:text-white mb-1">برش عکس</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">کادر را بکشید و با اسلایدر یا چرخ ماوس اندازه آن را تنظیم کنید.</p>
-                <div className="relative mx-auto bg-slate-100 rounded-lg" style={{ display: 'inline-block', maxWidth: '100%', maxHeight: '300px' }}
+                <div className="glass-soft relative mx-auto rounded-lg" style={{ display: 'inline-block', maxWidth: '100%', maxHeight: '300px' }}
                     onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp} onTouchMove={onMove} onTouchEnd={onUp}
                     onWheel={(e) => resize(crop.size - Math.sign(e.deltaY) * 15)}>
                     <img ref={imageRef} src={src} onLoad={onImageLoad} alt="" className="block w-auto h-auto max-w-full max-h-[300px] pointer-events-none rounded-lg" />
@@ -66,8 +66,8 @@ export default function ImageCropper({ src, onComplete, onCancel, type = 'avatar
                     <input type="range" min={40} max={maxSize} value={crop.size} onChange={(e) => resize(Number(e.target.value))} className="flex-1 accent-indigo-600" aria-label="اندازه کادر برش" />
                 </label>
                 <div className="flex gap-3 mt-auto">
-                    <button type="button" onClick={onCancel} className="flex-1 p-3 rounded-xl font-semibold bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200">انصراف</button>
-                    <button type="button" onClick={applyCrop} className="flex-1 p-3 rounded-xl font-bold bg-indigo-600 text-white">برش و ذخیره</button>
+                    <button type="button" onClick={onCancel} className="glass-soft flex-1 p-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200">انصراف</button>
+                    <button type="button" onClick={applyCrop} className="btn-grad flex-1 p-3 rounded-xl font-bold text-white">برش و ذخیره</button>
                 </div>
             </div>
         </div>

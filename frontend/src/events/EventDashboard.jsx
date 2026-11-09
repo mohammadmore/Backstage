@@ -36,27 +36,27 @@ export default function EventDashboard({ onOpen, onNewEvent, refreshKey }) {
 
     return (
         <div className="fade-in mt-6">
-            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center mb-5 gap-4 bg-white dark:bg-slate-800 p-5 sm:p-6 rounded-3xl border border-slate-200 dark:border-slate-700">
+            <div className="glass flex flex-col sm:flex-row justify-between items-stretch sm:items-center mb-5 gap-4 p-5 sm:p-6 rounded-3xl border">
                 <div>
                     <h1 className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-white">داشبورد رویدادها</h1>
                     <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">مدیریت و کنترل لحظه‌ای پروژه‌ها</p>
                 </div>
-                <button type="button" onClick={onNewEvent} className="bg-indigo-600 text-white px-6 py-3.5 rounded-2xl font-bold hover:bg-indigo-700 active:scale-[0.98] flex items-center justify-center gap-2"><Icons.Plus /> تعریف رویداد جدید</button>
+                <button type="button" onClick={onNewEvent} className="btn-grad text-white px-6 py-3.5 rounded-2xl font-bold active:scale-[0.98] flex items-center justify-center gap-2"><Icons.Plus /> تعریف رویداد جدید</button>
             </div>
 
             <div className="flex flex-col lg:flex-row gap-3 mb-5">
                 <div className="relative flex-1">
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none"><Icons.Search /></span>
-                    <input type="search" aria-label="جستجوی رویداد" placeholder="جستجو در عنوان، سازمان، مکان یا شماره پرونده..." value={query} onChange={e => setQuery(e.target.value)} className="w-full border-2 border-slate-200 dark:border-slate-700 pr-10 pl-3 py-2.5 rounded-xl bg-white dark:bg-slate-800 dark:text-white focus:border-indigo-500" />
+                    <input type="search" aria-label="جستجوی رویداد" placeholder="جستجو در عنوان، سازمان، مکان یا شماره پرونده..." value={query} onChange={e => setQuery(e.target.value)} className="glass-field w-full border-2 pr-10 pl-3 py-2.5 rounded-xl dark:text-white focus:border-indigo-500" />
                 </div>
                 <div className="flex gap-2 overflow-x-auto custom-scroll pb-1" role="group" aria-label="فیلتر وضعیت">
                     {FILTERS.map(fx => (
-                        <button key={fx.id} type="button" aria-pressed={filter === fx.id} onClick={() => setFilter(fx.id)} className={`whitespace-nowrap px-3.5 py-2 rounded-xl text-sm font-semibold border transition-colors ${filter === fx.id ? 'bg-slate-800 dark:bg-indigo-600 text-white border-transparent' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>
+                        <button key={fx.id} type="button" aria-pressed={filter === fx.id} onClick={() => setFilter(fx.id)} className={`whitespace-nowrap px-3.5 py-2 rounded-xl text-sm font-semibold border transition-colors ${filter === fx.id ? 'bg-grad text-white border-transparent' : 'glass text-slate-600 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-white/10'}`}>
                             {fx.label} <span className="opacity-70 text-xs">{toPersianNum(countFor(fx))}</span>
                         </button>
                     ))}
                 </div>
-                <select aria-label="مرتب‌سازی" value={sort} onChange={e => setSort(e.target.value)} className="border-2 border-slate-200 dark:border-slate-700 px-3 py-2 rounded-xl bg-white dark:bg-slate-800 dark:text-white text-sm">
+                <select aria-label="مرتب‌سازی" value={sort} onChange={e => setSort(e.target.value)} className="glass-field border-2 px-3 py-2 rounded-xl dark:text-white text-sm">
                     {Object.entries(SORTS).map(([k, v]) => <option key={k} value={k}>مرتب‌سازی: {v.label}</option>)}
                 </select>
             </div>
@@ -64,25 +64,25 @@ export default function EventDashboard({ onOpen, onNewEvent, refreshKey }) {
             {eventsList === null ? (
                 <div className="text-center py-24 text-slate-500 pulse-text">در حال دریافت رویدادها...</div>
             ) : all.length === 0 ? (
-                <div className="text-center py-24 bg-white dark:bg-slate-800 rounded-3xl border-2 border-dashed border-slate-300 dark:border-slate-700">
-                    <div className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-500 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-5"><Icons.Building /></div>
+                <div className="glass text-center py-24 rounded-3xl border-2 border-dashed">
+                    <div className="text-indigo-500 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-5 bg-grad-soft"><Icons.Building /></div>
                     <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-2">پروژه‌ای در دست اجرا نیست</h2>
                     <p className="text-slate-500 dark:text-slate-400 max-w-sm mx-auto px-4 leading-relaxed">برای شروع، روی «تعریف رویداد جدید» کلیک کنید.</p>
                 </div>
             ) : list.length === 0 ? (
-                <div className="text-center py-16 text-slate-500 bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700">
+                <div className="glass text-center py-16 text-slate-500 rounded-3xl border">
                     رویدادی با این جستجو/فیلتر پیدا نشد.
                     {filter !== 'all' && <button type="button" onClick={() => setFilter('all')} className="block mx-auto mt-3 text-indigo-600 dark:text-indigo-400 font-semibold underline">نمایش همه رویدادها</button>}
                 </div>
             ) : (
-                <ul className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                     {list.map(ev => {
                         const st = statusInfo(ev.status);
                         return (
                             <li key={ev.id}>
-                                <a href={`#/events/${ev.id}`} onClick={(e) => { e.preventDefault(); onOpen(ev.id); }} className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-md transition-all flex flex-col h-full group">
+                                <a href={`#/events/${ev.id}`} onClick={(e) => { e.preventDefault(); onOpen(ev.id); }} className="glass p-5 rounded-3xl border hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-md transition-all flex flex-col h-full group">
                                     <div className="flex justify-between items-start mb-4">
-                                        {ev.org_logo ? <img src={ev.org_logo} alt="" className="w-12 h-12 rounded-xl object-cover border border-slate-200 dark:border-slate-700 bg-white" /> : <div className="w-12 h-12 bg-slate-100 dark:bg-slate-700 rounded-xl flex items-center justify-center text-slate-500"><Icons.Building /></div>}
+                                        {ev.org_logo ? <img src={ev.org_logo} alt="" className="w-12 h-12 rounded-xl object-cover border border-violet-200/60 dark:border-white/10 bg-white" /> : <div className="glass-soft w-12 h-12 rounded-xl flex items-center justify-center text-slate-500"><Icons.Building /></div>}
                                         <span className={`text-xs font-semibold px-2.5 py-1 rounded-lg border ${st.card}`}>{st.label}</span>
                                     </div>
                                     <span className="text-xs text-slate-500 dark:text-slate-400">پرونده {toPersianNum(ev.id)}</span>
@@ -91,7 +91,7 @@ export default function EventDashboard({ onOpen, onNewEvent, refreshKey }) {
                                         <p className="flex items-center gap-2"><Icons.Building /> {toPersianNum(ev.org_name) || 'کارفرمای نامشخص'}</p>
                                         <p className="flex items-center gap-2"><Icons.Calendar /> {ev.start_date ? toJalaliDate(ev.start_date) : 'بدون تاریخ'}</p>
                                     </div>
-                                    <span className="mt-4 text-center py-2.5 rounded-xl font-semibold text-indigo-600 dark:text-indigo-400 bg-slate-50 dark:bg-slate-700 group-hover:bg-indigo-600 group-hover:text-white transition-colors">ورود به اتاق فرمان</span>
+                                    <span className="glass-soft mt-4 text-center py-2.5 rounded-xl font-semibold text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white transition-colors">ورود به اتاق فرمان</span>
                                 </a>
                             </li>
                         );
