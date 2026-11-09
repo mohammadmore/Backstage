@@ -98,8 +98,21 @@ export default function MasterData({ md, reload, tab = 'categories', onTabChange
         const from = ids.indexOf(dragId);
         ids.splice(from, 1);
         ids.splice(ids.indexOf(targetId), 0, dragId);
-        setOrder(ids); setDragId(null); setOverId(null);
+        const to = ids.indexOf(dragId);
+        const dragged = ordered.find(x => x.id === dragId);
+        const target = ordered.find(x => x.id === targetId);
+        setDragId(null); setOverId(null);
+        if (from === to) return;
+        // تایید قبل از جابجایی تا رها کردن ناخواسته ترتیب را به هم نزند
+        const ok = await confirmDialog({
+            title: 'تغییر ترتیب',
+            message: `«${dragged.name || dragged.full_name}» از ردیف ${toPersianNum(from + 1)} به ردیف ${toPersianNum(to + 1)} (قبل از «${target.name || target.full_name}») منتقل شود؟`,
+            confirmText: 'جابجا کن',
+        });
+        if (!ok) return;
+        setOrder(ids);
         const res = await api('set_order', { type: typeStr, ids });
+        if (res) toast('ترتیب جدید ذخیره شد.');
         if (!res) setOrder(null);
         reload();
     };
