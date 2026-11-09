@@ -49,4 +49,7 @@ DirectoryIndex index.html
     Header always set Referrer-Policy "same-origin"
     # مرورگر از این پس سایت را فقط با HTTPS باز می‌کند (۶ ماه)
     Header always set Strict-Transport-Security "max-age=15552000" env=HTTPS
+    # سیاست امنیت محتوا: فقط اسکریپت‌های خود سایت اجرا می‌شوند (جلوگیری از XSS)
+    Header always setifempty Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob:; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+    Header always set Permissions-Policy "camera=(self), microphone=(), geolocation=()"
 </IfModule>

@@ -14,18 +14,23 @@ header('Referrer-Policy: same-origin');
 
 require __DIR__ . '/inc/bootstrap.php';
 require __DIR__ . '/inc/migrations.php';
+require __DIR__ . '/inc/access.php';
+require __DIR__ . '/inc/sms.php';
+require __DIR__ . '/inc/totp.php';
 
 // ---------------------------------------------------------------
 // جدول مسیرها: action => [تابع, سطح دسترسی, متد]
+// سطح دسترسی: public | user | office (مدیر/مدیر پروژه/حسابدار) | planner (مدیر/مدیر پروژه) | admin
+// دسترسی سطح رویداد داخل هر تابع با event_access بررسی می‌شود.
 // ---------------------------------------------------------------
-const ROUTES = [
+$ROUTES = [
     'login'               => ['h_login', 'public', 'POST'],
     'logout'              => ['h_logout', 'public', 'POST'],
     'me'                  => ['h_me', 'public', 'GET'],
     'update_theme'        => ['h_update_theme', 'user', 'POST'],
     'change_password'     => ['h_change_password', 'user', 'POST'],
 
-    'get_master_data'     => ['h_get_master_data', 'admin', 'GET'],
+    'get_master_data'     => ['h_get_master_data', 'office', 'GET'],
     'get_colleagues'      => ['h_get_colleagues', 'user', 'GET'],
     'add_master_item'     => ['h_add_master_item', 'admin', 'POST'],
     'edit_master_item'    => ['h_edit_master_item', 'admin', 'POST'],
@@ -33,31 +38,35 @@ const ROUTES = [
     'update_sort'         => ['h_update_sort', 'admin', 'POST'],
     'set_order'           => ['h_set_order', 'admin', 'POST'],
 
-    'create_event'        => ['h_create_event', 'admin', 'POST'],
-    'update_event_details'=> ['h_update_event_details', 'admin', 'POST'],
-    'get_events'          => ['h_get_events', 'admin', 'GET'],
-    'get_event_detail'    => ['h_get_event_detail', 'admin', 'GET'],
-    'update_event_status' => ['h_update_event_status', 'admin', 'POST'],
+    'create_event'        => ['h_create_event', 'planner', 'POST'],
+    'update_event_details'=> ['h_update_event_details', 'planner', 'POST'],
+    'get_events'          => ['h_get_events', 'office', 'GET'],
+    'get_event_detail'    => ['h_get_event_detail', 'office', 'GET'],
+    'update_event_status' => ['h_update_event_status', 'planner', 'POST'],
 
     'get_my_tasks'        => ['h_get_my_tasks', 'user', 'GET'],
     'update_task'         => ['h_update_task', 'user', 'POST'],
-    'assign_role'         => ['h_assign_role', 'admin', 'POST'],
-    'quick_replace'       => ['h_quick_replace', 'admin', 'POST'],
-    'add_quick_task'      => ['h_add_quick_task', 'admin', 'POST'],
-    'update_task_info'    => ['h_update_task_info', 'admin', 'POST'],
-    'delete_task'         => ['h_delete_task', 'admin', 'POST'],
-    'delete_finance_item' => ['h_delete_finance_item', 'admin', 'POST'],
+    'assign_role'         => ['h_assign_role', 'planner', 'POST'],
+    'quick_replace'       => ['h_quick_replace', 'planner', 'POST'],
+    'add_quick_task'      => ['h_add_quick_task', 'planner', 'POST'],
+    'update_task_info'    => ['h_update_task_info', 'planner', 'POST'],
+    'delete_task'         => ['h_delete_task', 'planner', 'POST'],
+    'delete_finance_item' => ['h_delete_finance_item', 'office', 'POST'],
 
-    'update_finance_item' => ['h_update_finance_item', 'admin', 'POST'],
-    'update_finance_totals'=> ['h_update_finance_totals', 'admin', 'POST'],
-    'add_adhoc_service'   => ['h_add_adhoc_service', 'admin', 'POST'],
+    'update_finance_item' => ['h_update_finance_item', 'office', 'POST'],
+    'update_finance_totals'=> ['h_update_finance_totals', 'office', 'POST'],
+    'add_adhoc_service'   => ['h_add_adhoc_service', 'office', 'POST'],
 
     'request_delegation'  => ['h_request_delegation', 'user', 'POST'],
-    'resolve_delegation'  => ['h_resolve_delegation', 'admin', 'POST'],
+    'resolve_delegation'  => ['h_resolve_delegation', 'planner', 'POST'],
     'get_notifications'   => ['h_get_notifications', 'user', 'GET'],
     'mark_notif_read'     => ['h_mark_notif_read', 'user', 'POST'],
     'mark_all_notifs_read'=> ['h_mark_all_notifs_read', 'user', 'POST'],
+    'login_2fa'           => ['h_login_2fa', 'public', 'POST'],
 ];
+// ماژول‌های قابلیت‌ها (هر فایل مسیرهای خود را به $ROUTES اضافه می‌کند)
+foreach (glob(__DIR__ . '/inc/modules/*.php') as $__m) require $__m;
+unset($__m);
 
 $pendingDeletes = [];
 
@@ -66,8 +75,8 @@ try {
     configure_error_log();
     if (is_https()) header('Strict-Transport-Security: max-age=15552000');
     $action = (string)($_GET['action'] ?? '');
-    if (!isset(ROUTES[$action])) throw new ApiError('وب‌سرویس نامعتبر', 404);
-    [$handler, $access, $method] = ROUTES[$action];
+    if (!isset($ROUTES[$action])) throw new ApiError('وب‌سرویس نامعتبر', 404);
+    [$handler, $access, $method] = $ROUTES[$action];
 
     $reqMethod = $_SERVER['REQUEST_METHOD'] ?? 'GET';
     if ($reqMethod !== $method) throw new ApiError('متد درخواست نامعتبر است.', 405);
@@ -81,7 +90,9 @@ try {
     start_session();
 
     $input = [];
-    if ($reqMethod === 'POST') {
+    if ($reqMethod === 'POST' && stripos((string)($_SERVER['CONTENT_TYPE'] ?? ''), 'multipart/form-data') === 0) {
+        $input = $_POST; // آپلود فایل
+    } elseif ($reqMethod === 'POST') {
         $raw = file_get_contents('php://input');
         $decoded = $raw !== '' ? json_decode((string)$raw, true) : [];
         if (!is_array($decoded)) throw new ApiError('داده ارسالی نامعتبر است.');
@@ -96,19 +107,38 @@ try {
     }
 
     $user = null;
-    if ($access === 'user') $user = require_user();
-    if ($access === 'admin') $user = require_admin();
+    if ($access !== 'public') {
+        $user = require_user();
+        $okAccess = match ($access) {
+            'user' => true,
+            'office' => $user['perms']['events'],
+            'planner' => $user['perms']['tasks'],
+            'admin' => $user['is_admin'],
+            default => false,
+        };
+        if (!$okAccess) throw new ApiError('شما به این بخش دسترسی ندارید.', 403);
+    }
     // کاربری که رمزش ضعیف است تا تغییر رمز، فقط به همین چند عملیات دسترسی دارد
     if ($user && $user['must_change_password'] && !in_array($action, ['change_password', 'logout', 'me'], true)) {
         throw new ApiError('ابتدا باید رمز عبور خود را تغییر دهید.', 403);
     }
+    // ورود دومرحله‌ای الزامی ولی هنوز فعال نشده
+    if ($user && !$user['must_change_password'] && $user['must_setup_2fa'] && !in_array($action, ['twofa_setup_begin', 'twofa_setup_confirm', 'logout', 'me', 'change_password'], true)) {
+        throw new ApiError('ابتدا باید ورود دومرحله‌ای را برای حساب خود فعال کنید.', 403);
+    }
     // نوشتن نشست تمام شد؛ قفل فایل نشست آزاد می‌شود تا درخواست‌های موازی معطل نمانند
-    if (!in_array($action, ['login', 'logout', 'change_password'], true)) session_write_close();
+    if (!in_array($action, ['login', 'login_2fa', 'logout', 'change_password', 'twofa_setup_begin', 'twofa_setup_confirm'], true)) session_write_close();
 
     $result = $handler($input, $user);
-    json_out($result ?? ['success' => true]);
+    if (!is_array($result) || empty($result['__raw'])) json_out($result ?? ['success' => true]);
 
     foreach ($pendingDeletes as $p) delete_upload($p);
+
+    // ارسال پیامک‌های صف‌شده پس از پاسخ به کاربر (کاربر منتظر سرویس پیامک نمی‌ماند)
+    if (!empty($GLOBALS['__sms_pending'])) {
+        if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
+        try { sms_process_queue(10); } catch (Throwable $e) { error_log('[sms] ' . $e->getMessage()); }
+    }
 } catch (ApiError $e) {
     if (db_in_tx()) db()->rollBack();
     json_out(['error' => $e->getMessage()], $e->status);
@@ -171,10 +201,48 @@ function h_login(array $in): array
         $found['must_change_password'] = 1;
     }
     session_regenerate_id(true);
+    // ورود دومرحله‌ای: تا تایید کد، نشست کامل ساخته نمی‌شود
+    if (twofa_mode() !== 'off' && (int)($found['totp_enabled'] ?? 0) === 1) {
+        unset($_SESSION['uid'], $_SESSION['sv']);
+        $_SESSION['pending_2fa'] = ['uid' => (int)$found['id'], 'sv' => (int)$found['session_version'], 'at' => time(), 'tries' => 0];
+        return ['success' => true, 'twofa_required' => true];
+    }
     $_SESSION['uid'] = (int)$found['id'];
     $_SESSION['sv'] = (int)$found['session_version'];
     $_SESSION['last_seen'] = time();
     return ['success' => true, 'user' => public_user($found)];
+}
+
+/** مرحله دوم ورود: کد ۶ رقمی برنامه احراز هویت یا یکی از کدهای پشتیبان */
+function h_login_2fa(array $in): array
+{
+    $p = $_SESSION['pending_2fa'] ?? null;
+    if (!$p || time() - (int)$p['at'] > 300) { unset($_SESSION['pending_2fa']); throw new ApiError('زمان ورود به پایان رسید. دوباره نام کاربری و رمز را وارد کنید.', 401); }
+    if ((int)$p['tries'] >= 5) { unset($_SESSION['pending_2fa']); throw new ApiError('تعداد تلاش‌ها زیاد بود. دوباره وارد شوید.', 429); }
+    $_SESSION['pending_2fa']['tries'] = (int)$p['tries'] + 1;
+    $u = q_one('SELECT * FROM users WHERE id = ?', [(int)$p['uid']]);
+    if (!$u || (int)$u['totp_enabled'] !== 1) throw new ApiError('حساب کاربری نامعتبر است.', 401);
+    $code = trim(to_en_digits((string)($in['code'] ?? '')));
+    $ok = false;
+    if (preg_match('/^\d{6}$/', $code)) {
+        $step = totp_verify((string)$u['totp_secret'], $code, $u['totp_last_step'] !== null ? (int)$u['totp_last_step'] : null);
+        if ($step !== null) { q('UPDATE users SET totp_last_step = ? WHERE id = ?', [$step, $u['id']]); $ok = true; }
+    } elseif ($code !== '') {
+        $codes = json_list($u['totp_backup']);
+        foreach ($codes as $i => $h) {
+            if (password_verify(strtolower($code), (string)$h)) { unset($codes[$i]); q('UPDATE users SET totp_backup = ? WHERE id = ?', [jenc(array_values($codes)), $u['id']]); $ok = true; break; }
+        }
+    }
+    if (!$ok) {
+        q('INSERT INTO login_attempts (ip, username) VALUES (?, ?)', [client_ip(), mb_substr((string)$u['username'], 0, 50)]);
+        throw new ApiError('کد واردشده صحیح نیست.', 401);
+    }
+    unset($_SESSION['pending_2fa']);
+    session_regenerate_id(true);
+    $_SESSION['uid'] = (int)$u['id'];
+    $_SESSION['sv'] = (int)$u['session_version'];
+    $_SESSION['last_seen'] = time();
+    return ['success' => true, 'user' => public_user($u)];
 }
 
 function h_logout(): array
@@ -228,14 +296,18 @@ function staff_role_sql(): string
     return "role NOT IN ('" . implode("','", ADMIN_ROLES) . "')";
 }
 
-function h_get_master_data(): array
+function h_get_master_data(array $in, array $user): array
 {
+    // اطلاعات حساس (شبا، تلفن دوم) فقط برای مدیر کل و حسابدار
+    $sensitive = $user['is_admin'] || $user['role'] === 'accountant';
+    $staffCols = 'id, username, full_name, role, is_shadow, phone, skills, sort_order, avatar, can_delegate, default_fee, rating_score, rating_count, totp_enabled' . ($sensitive ? ', phone2, iban' : '');
     return [
         'categories' => q_all('SELECT * FROM categories ORDER BY sort_order ASC, id ASC'),
         'services' => q_all('SELECT * FROM services ORDER BY sort_order ASC, id ASC'),
-        'staff' => q_all('SELECT id, username, full_name, role, is_shadow, phone, phone2, iban, skills, sort_order, avatar, can_delegate FROM users WHERE ' . staff_role_sql() . ' ORDER BY sort_order ASC, id ASC'),
+        'staff' => q_all("SELECT $staffCols FROM users WHERE " . staff_role_sql() . ' ORDER BY sort_order ASC, id ASC'),
         'organizations' => q_all('SELECT * FROM organizations ORDER BY sort_order ASC, id ASC'),
         'venues' => q_all('SELECT * FROM venues ORDER BY sort_order ASC, id ASC'),
+        'managers' => q_all("SELECT id, full_name FROM users WHERE role = 'manager' AND is_shadow = 0 ORDER BY full_name"),
     ];
 }
 
@@ -243,7 +315,7 @@ function h_get_master_data(): array
 function h_get_colleagues(array $in, array $user): array
 {
     if (!$user['is_admin'] && (int)$user['can_delegate'] !== 1) throw new ApiError('شما مجوز واگذاری وظیفه ندارید.', 403);
-    return q_all('SELECT id, full_name, avatar, is_shadow FROM users WHERE ' . staff_role_sql() . ' AND id <> ? ORDER BY sort_order ASC, id ASC', [$user['id']]);
+    return q_all('SELECT id, full_name, avatar, is_shadow FROM users WHERE ' . assignable_sql() . ' AND id <> ? ORDER BY sort_order ASC, id ASC', [$user['id']]);
 }
 
 function master_type(array $in): string
@@ -318,7 +390,13 @@ function save_master_item(string $type, array $in, ?int $id): array
             'iban' => in_str($in, 'iban', 50, false, 'شماره شبا'),
             'skills' => jenc(in_str_list($in, 'skills')),
             'can_delegate' => in_bool($in, 'can_delegate') ? 1 : 0,
+            'default_fee' => in_money($in, 'default_fee', 'دستمزد پیش‌فرض'),
         ];
+        $role = (string)($in['role'] ?? ($existing['role'] ?? 'staff'));
+        if (!isset(USER_ROLES[$role])) $role = 'staff';
+        if (in_array($role, ['manager', 'accountant'], true) && $isShadow) throw new ApiError('مدیر پروژه و حسابدار باید کاربر فعال (با نام کاربری) باشند.');
+        $fields['role'] = $role;
+        $roleChanged = $existing && $existing['role'] !== $role;
         if ($hash !== null) {
             $fields['password'] = $hash;
             // رمزی که مدیر تعیین می‌کند موقت است: کاربر در اولین ورود باید آن را عوض کند
@@ -327,10 +405,9 @@ function save_master_item(string $type, array $in, ?int $id): array
         if ($id) {
             $set = implode(', ', array_map(fn($k) => "`$k` = ?", array_keys($fields)));
             // تغییر رمز یا خاموش کردن کاربر => نشست‌های باز او باطل می‌شوند
-            if ($hash !== null || $isShadow) $set .= ', session_version = session_version + 1';
+            if ($hash !== null || $isShadow || $roleChanged) $set .= ', session_version = session_version + 1';
             q("UPDATE users SET $set WHERE id = ?", [...array_values($fields), $id]);
         } else {
-            $fields['role'] = 'staff';
             $fields['sort_order'] = next_sort($table);
             $cols = implode(', ', array_map(fn($k) => "`$k`", array_keys($fields)));
             q("INSERT INTO users ($cols) VALUES (" . implode(', ', array_fill(0, count($fields), '?')) . ')', array_values($fields));
@@ -415,7 +492,9 @@ function sanitize_packages($raw, bool $strict = true): array
             // پیش‌نیاز باید یکی از تسک‌های قبلی همین پکیج باشد
             if ($dep !== '' && !in_array($dep, $titles, true)) $dep = '';
             $timing = (string)($t['timing'] ?? '');
-            $tasks[] = ['title' => $title, 'role' => $role, 'timing' => in_array($timing, TIMINGS, true) ? $timing : TIMINGS[0], 'dep' => $dep];
+            // موعد اختیاری: دقیقه نسبت به شروع رویداد (منفی = قبل از شروع)
+            $due = (isset($t['due']) && $t['due'] !== '' && $t['due'] !== null && is_numeric(to_en_digits((string)$t['due']))) ? max(-525600, min(525600, (int)to_en_digits((string)$t['due']))) : null;
+            $tasks[] = ['title' => $title, 'role' => $role, 'timing' => in_array($timing, TIMINGS, true) ? $timing : TIMINGS[0], 'dep' => $dep, 'due' => $due];
             $titles[] = $title;
         }
         $out[] = ['name' => $pname, 'price' => $price, 'tasks' => $tasks];
@@ -455,6 +534,7 @@ function h_delete_master_item(array $in): array
         foreach ($dels as $d) q("UPDATE notifications SET is_read = 1 WHERE type = 'delegation' AND ref_id = ?", [$d['id']]);
         q("UPDATE delegations SET status = 'cancelled' WHERE status = 'pending' AND (from_user_id = ? OR to_user_id = ?)", [$id, $id]);
         q('DELETE FROM notifications WHERE user_id = ?', [$id]);
+        q('UPDATE events SET manager_id = NULL WHERE manager_id = ?', [$id]);
         q('DELETE FROM users WHERE id = ?', [$id]);
         delete_after_success($u['avatar']);
     }
@@ -537,9 +617,11 @@ function event_core_fields(array $in): array
     return [$venueId, $guests, $start, $end];
 }
 
-function h_create_event(array $in): array
+function h_create_event(array $in, array $user): array
 {
     $title = in_str($in, 'title', 255, true, 'نام رویداد');
+    $managerId = $user['role'] === 'manager' ? (int)$user['id'] : in_int($in, 'manager_id', 1, null, 'مدیر پروژه');
+    if ($managerId !== null && !q_val("SELECT id FROM users WHERE id = ? AND role = 'manager'", [$managerId])) throw new ApiError('مدیر پروژه انتخاب‌شده معتبر نیست.');
     $orgId = in_int($in, 'org_id', 1, null, 'سازمان');
     if ($orgId !== null && !q_val('SELECT id FROM organizations WHERE id = ?', [$orgId])) throw new ApiError('سازمان انتخاب‌شده وجود ندارد.');
     [$venueId, $guests, $start, $end] = event_core_fields($in);
@@ -547,14 +629,14 @@ function h_create_event(array $in): array
     $selected = is_array($in['selected_services'] ?? null) ? $in['selected_services'] : [];
     $pdo = db();
     $pdo->beginTransaction();
-    q("INSERT INTO events (title, event_type, org_id, contact_name, venue_id, guest_count, start_date, end_date, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft')", [
-        $title, in_str($in, 'event_type', 100), $orgId, in_str($in, 'contact_name', 100), $venueId, $guests, $start, $end,
+    q("INSERT INTO events (title, event_type, org_id, contact_name, venue_id, guest_count, start_date, end_date, status, manager_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)", [
+        $title, in_str($in, 'event_type', 100), $orgId, in_str($in, 'contact_name', 100), $venueId, $guests, $start, $end, $managerId,
     ]);
     $eventId = (int)$pdo->lastInsertId();
     log_action($eventId, 'پرونده رویداد ایجاد شد.');
 
     $insSvc = $pdo->prepare('INSERT INTO event_services (event_id, service_name, frozen_price, cost_type, unit_price, qty) VALUES (?, ?, ?, ?, ?, ?)');
-    $insTask = $pdo->prepare('INSERT INTO event_tasks (event_id, title, role_tag, timing_tag, depends_on_id) VALUES (?, ?, ?, ?, ?)');
+    $insTask = $pdo->prepare('INSERT INTO event_tasks (event_id, title, role_tag, timing_tag, depends_on_id, due_offset_min, due_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
     $seen = [];
     foreach ($selected as $sel) {
         if (!is_array($sel)) continue;
@@ -576,7 +658,8 @@ function h_create_event(array $in): array
         $idsByTitle = []; // پیش‌نیازها فقط داخل همین پکیج جستجو می‌شوند
         foreach ($pkg['tasks'] as $t) {
             $depId = ($t['dep'] !== '' && isset($idsByTitle[$t['dep']])) ? $idsByTitle[$t['dep']] : null;
-            $insTask->execute([$eventId, $t['title'], $t['role'], $t['timing'], $depId]);
+            $off = $t['due'] ?? default_due_offset($t['timing'], $start, $end);
+            $insTask->execute([$eventId, $t['title'], $t['role'], $t['timing'], $depId, $off, due_from_offset($start, $off)]);
             if (!isset($idsByTitle[$t['title']])) $idsByTitle[$t['title']] = (int)$pdo->lastInsertId();
         }
     }
@@ -584,14 +667,22 @@ function h_create_event(array $in): array
     return ['success' => true, 'id' => $eventId];
 }
 
-function h_update_event_details(array $in): array
+function h_update_event_details(array $in, array $user): array
 {
     $eventId = in_id($in, 'event_id', 'رویداد');
-    $ev = get_event_or_fail($eventId);
+    $ev = event_access($user, $eventId, 'tasks');
     [$venueId, $guests, $start, $end] = event_core_fields($in);
+    $managerId = $ev['manager_id'] !== null ? (int)$ev['manager_id'] : null;
+    if ($user['is_admin'] && array_key_exists('manager_id', $in)) {
+        $managerId = in_int($in, 'manager_id', 1, null, 'مدیر پروژه');
+        if ($managerId !== null && !q_val("SELECT id FROM users WHERE id = ? AND role = 'manager'", [$managerId])) throw new ApiError('مدیر پروژه انتخاب‌شده معتبر نیست.');
+    }
+    $title = array_key_exists('title', $in) ? in_str($in, 'title', 255, true, 'عنوان رویداد') : $ev['title'];
     $pdo = db();
     $pdo->beginTransaction();
-    q('UPDATE events SET venue_id = ?, guest_count = ?, start_date = ?, end_date = ? WHERE id = ?', [$venueId, $guests, $start, $end, $eventId]);
+    q('UPDATE events SET title = ?, venue_id = ?, guest_count = ?, start_date = ?, end_date = ?, manager_id = ? WHERE id = ?', [$title, $venueId, $guests, $start, $end, $managerId, $eventId]);
+    if ($ev['start_date'] !== $start) recompute_due_dates($eventId);
+    if ((int)$ev['manager_id'] !== (int)$managerId && $managerId) notify($managerId, "مدیریت رویداد «{$title}» به شما سپرده شد.", 'info', $eventId);
     $qty = individual_qty($guests);
     q("UPDATE event_services SET qty = ?, frozen_price = CASE WHEN unit_price IS NULL THEN NULL ELSE unit_price * ? END WHERE event_id = ? AND cost_type = 'individual'", [$qty, $qty, $eventId]);
 
@@ -599,34 +690,65 @@ function h_update_event_details(array $in): array
     if ((int)$ev['guest_count'] !== $guests) $changes[] = "تعداد مهمانان از {$ev['guest_count']} به {$guests}";
     if ((int)$ev['venue_id'] !== (int)$venueId) $changes[] = 'مکان برگزاری';
     if ($ev['start_date'] !== $start || $ev['end_date'] !== $end) $changes[] = 'زمان‌بندی';
+    if ($ev['title'] !== $title) $changes[] = 'عنوان';
+    if ((int)$ev['manager_id'] !== (int)$managerId) $changes[] = 'مدیر پروژه';
     log_action($eventId, $changes ? 'اطلاعات پایه رویداد ویرایش شد: ' . implode('، ', $changes) . '.' : 'اطلاعات پایه رویداد بدون تغییر ذخیره شد.');
     $pdo->commit();
     return ['success' => true];
 }
 
-function h_get_events(): array
+function h_get_events(array $in, array $user): array
 {
-    return q_all('SELECT e.*, o.name AS org_name, o.logo AS org_logo, v.name AS venue_name FROM events e LEFT JOIN organizations o ON e.org_id = o.id LEFT JOIN venues v ON e.venue_id = v.id ORDER BY e.id DESC');
+    [$where, $params] = event_scope_sql($user);
+    $tpl = !empty($in['templates']) ? 1 : 0;
+    // قالب‌ها برای همه برنامه‌ریزان قابل استفاده‌اند
+    if ($tpl) { $where = '1=1'; $params = []; }
+    $rows = q_all("SELECT e.*, o.name AS org_name, o.logo AS org_logo, v.name AS venue_name, m.full_name AS manager_name,
+            (SELECT COUNT(*) FROM event_tasks t WHERE t.event_id = e.id) AS task_count,
+            (SELECT COUNT(*) FROM event_tasks t WHERE t.event_id = e.id AND t.is_done = 1) AS done_count,
+            (SELECT COUNT(*) FROM event_tasks t WHERE t.event_id = e.id AND t.is_done = 0 AND t.due_at IS NOT NULL AND t.due_at < NOW()) AS overdue_count
+        FROM events e LEFT JOIN organizations o ON e.org_id = o.id LEFT JOIN venues v ON e.venue_id = v.id LEFT JOIN users m ON m.id = e.manager_id
+        WHERE e.is_template = ? AND $where ORDER BY e.id DESC", [$tpl, ...$params]);
+    foreach ($rows as &$r) {
+        unset($r['portal_token']);
+        if ($user['perms']['finance']) $r['fin'] = event_finance((int)$r['id'], $r);
+    }
+    unset($r);
+    return $rows;
 }
 
-function h_get_event_detail(array $in): array
+function h_get_event_detail(array $in, array $user): array
 {
     $eventId = in_id($in, 'id', 'رویداد');
-    $event = q_one('SELECT e.*, o.name AS org_name, o.logo AS org_logo, v.name AS venue_name FROM events e LEFT JOIN organizations o ON e.org_id = o.id LEFT JOIN venues v ON e.venue_id = v.id WHERE e.id = ?', [$eventId]);
-    if (!$event) throw new ApiError('رویداد یافت نشد.', 404);
-    return [
+    event_access($user, $eventId, 'read');
+    $event = q_one('SELECT e.*, o.name AS org_name, o.logo AS org_logo, v.name AS venue_name, m.full_name AS manager_name FROM events e LEFT JOIN organizations o ON e.org_id = o.id LEFT JOIN venues v ON e.venue_id = v.id LEFT JOIN users m ON m.id = e.manager_id WHERE e.id = ?', [$eventId]);
+    $canTasks = can_event($user, $event, 'tasks');
+    $canFin = can_event($user, $event, 'finance');
+    if (!$canTasks) unset($event['portal_token']);
+    $out = [
         'event' => $event,
-        'tasks' => q_all('SELECT t.*, u.avatar AS assignee_avatar, u.full_name AS assignee_name, p.title AS dep_title, p.is_done AS dep_done FROM event_tasks t LEFT JOIN users u ON t.assignee_id = u.id LEFT JOIN event_tasks p ON p.id = t.depends_on_id WHERE t.event_id = ? ORDER BY t.id ASC', [$eventId]),
+        'access' => ['tasks' => $canTasks, 'finance' => $canFin, 'admin' => $user['is_admin']],
+        'tasks' => q_all('SELECT t.*, u.avatar AS assignee_avatar, u.full_name AS assignee_name, p.title AS dep_title, p.is_done AS dep_done,
+                (SELECT COUNT(*) FROM attachments a WHERE a.task_id = t.id) AS attach_count,
+                (SELECT COUNT(*) FROM notes n WHERE n.task_id = t.id) AS note_count
+            FROM event_tasks t LEFT JOIN users u ON t.assignee_id = u.id LEFT JOIN event_tasks p ON p.id = t.depends_on_id WHERE t.event_id = ? ORDER BY t.id ASC', [$eventId]),
         'services' => q_all('SELECT * FROM event_services WHERE event_id = ? ORDER BY id ASC', [$eventId]),
         'logs' => q_all('SELECT * FROM event_logs WHERE event_id = ? ORDER BY id DESC', [$eventId]),
         'delegations' => q_all("SELECT d.*, uf.full_name AS from_name, ut.full_name AS to_name, t.title AS task_title FROM delegations d JOIN users uf ON d.from_user_id = uf.id JOIN users ut ON d.to_user_id = ut.id JOIN event_tasks t ON d.task_id = t.id WHERE d.event_id = ? AND d.status = 'pending' ORDER BY d.id ASC", [$eventId]),
+        'payments' => q_all('SELECT * FROM payments WHERE event_id = ? ORDER BY paid_at ASC, id ASC', [$eventId]),
+        'fees' => $canFin ? q_all('SELECT f.*, u.full_name, u.iban, u.default_fee FROM event_staff_fees f JOIN users u ON u.id = f.user_id WHERE f.event_id = ? ORDER BY u.full_name', [$eventId]) : [],
+        'ratings' => q_all('SELECT * FROM ratings WHERE event_id = ?', [$eventId]),
+        'conflicts' => event_conflicts($eventId),
+        'fin' => event_finance($eventId, $event),
+        'guest_stats' => q_one('SELECT COUNT(*) AS total, SUM(checked_in_at IS NOT NULL) AS checked_in FROM guests WHERE event_id = ?', [$eventId]),
     ];
+    return $out;
 }
 
-function h_update_event_status(array $in): array
+function h_update_event_status(array $in, array $user): array
 {
     $eventId = in_id($in, 'event_id', 'رویداد');
-    $ev = get_event_or_fail($eventId);
+    $ev = event_access($user, $eventId, 'tasks');
     $status = (string)($in['status'] ?? '');
     if (!isset(EVENT_STATUSES[$status])) throw new ApiError('وضعیت نامعتبر است.');
     if ($ev['status'] === $status) return ['success' => true];
@@ -641,7 +763,8 @@ function h_update_event_status(array $in): array
 /** وظایف کاربر جاری (فقط وظایف خودش؛ وضعیت پیش‌نیاز از سمت سرور محاسبه می‌شود) */
 function h_get_my_tasks(array $in, array $user): array
 {
-    $rows = q_all('SELECT t.id, t.event_id, t.title, t.role_tag, t.timing_tag, t.is_done, t.has_issue, t.issue_note, t.depends_on_id, p.title AS dep_title, p.is_done AS dep_done,
+    $rows = q_all('SELECT t.id, t.event_id, t.title, t.role_tag, t.timing_tag, t.is_done, t.has_issue, t.issue_note, t.depends_on_id, t.due_at, p.title AS dep_title, p.is_done AS dep_done,
+            (SELECT COUNT(*) FROM attachments a WHERE a.task_id = t.id) AS attach_count, (SELECT COUNT(*) FROM notes n WHERE n.task_id = t.id) AS note_count,
             e.title AS event_title, e.start_date, e.end_date, e.status AS event_status, v.name AS venue_name, o.logo AS org_logo,
             (SELECT COUNT(*) FROM delegations d WHERE d.task_id = t.id AND d.status = \'pending\') AS pending_delegation
         FROM event_tasks t
@@ -649,7 +772,7 @@ function h_get_my_tasks(array $in, array $user): array
         LEFT JOIN venues v ON v.id = e.venue_id
         LEFT JOIN organizations o ON o.id = e.org_id
         LEFT JOIN event_tasks p ON p.id = t.depends_on_id
-        WHERE t.assignee_id = ?
+        WHERE t.assignee_id = ? AND e.is_template = 0
         ORDER BY e.id DESC, t.id ASC', [$user['id']]);
     $groups = [];
     foreach ($rows as $r) {
@@ -675,7 +798,7 @@ function task_with_event(int $taskId): array
 
 function staff_user_or_fail(int $id): array
 {
-    $u = q_one('SELECT id, full_name, is_shadow FROM users WHERE id = ? AND ' . staff_role_sql(), [$id]);
+    $u = q_one('SELECT id, full_name, is_shadow FROM users WHERE id = ? AND ' . assignable_sql(), [$id]);
     if (!$u) throw new ApiError('همکار انتخاب‌شده یافت نشد.');
     return $u;
 }
@@ -685,15 +808,18 @@ function h_update_task(array $in, array $user): array
     $task = task_with_event(in_id($in, 'task_id', 'وظیفه'));
     $eventId = (int)$task['event_id'];
     $isOwner = (int)$task['assignee_id'] === $user['id'];
-    if (!$user['is_admin'] && !$isOwner) throw new ApiError('این وظیفه به شما تعلق ندارد.', 403);
+    $ev = q_one('SELECT * FROM events WHERE id = ?', [$eventId]);
+    $canManage = $ev && can_event($user, $ev, 'tasks');
+    if (!$canManage && !$isOwner) throw new ApiError('این وظیفه به شما تعلق ندارد.', 403);
     $title = $task['title'];
 
     if (array_key_exists('assignee_id', $in)) {
-        if (!$user['is_admin']) throw new ApiError('فقط مدیر می‌تواند متصدی وظیفه را تغییر دهد.', 403);
+        if (!$canManage) throw new ApiError('فقط مدیر می‌تواند متصدی وظیفه را تغییر دهد.', 403);
         $aid = in_int($in, 'assignee_id', 1, null, 'متصدی');
         $name = $aid ? staff_user_or_fail($aid)['full_name'] : null;
         q('UPDATE event_tasks SET assignee_id = ? WHERE id = ?', [$aid, $task['id']]);
         log_action($eventId, $name ? "متصدی وظیفه «{$title}» به «{$name}» تغییر کرد." : "متصدی وظیفه «{$title}» حذف شد.");
+        if ($aid && (int)$aid !== (int)$task['assignee_id']) notify_assignment((int)$aid, $eventId, [$title]);
     } elseif (array_key_exists('is_done', $in)) {
         $done = in_bool($in, 'is_done');
         if ($done && $task['depends_on_id'] && (int)$task['dep_done'] !== 1) {
@@ -707,8 +833,7 @@ function h_update_task(array $in, array $user): array
         q('UPDATE event_tasks SET has_issue = ?, issue_note = ? WHERE id = ?', [$has ? 1 : 0, $note, $task['id']]);
         log_action($eventId, $has ? "برای وظیفه «{$title}» مانع اعلام شد: {$note}" : "مانع وظیفه «{$title}» برطرف شد.");
         if ($has) {
-            $evTitle = (string)q_val('SELECT title FROM events WHERE id = ?', [$eventId]);
-            notify(0, "گزارش مانع در رویداد «{$evTitle}» / وظیفه «{$title}» توسط {$user['full_name']}: {$note}", 'issue', $eventId);
+            notify_event_managers($eventId, "گزارش مانع در رویداد «{$ev['title']}» / وظیفه «{$title}» توسط {$user['full_name']}: {$note}", 'issue', $eventId, 'issue');
         }
     } else {
         throw new ApiError('تغییری ارسال نشده است.');
@@ -716,63 +841,80 @@ function h_update_task(array $in, array $user): array
     return ['success' => true];
 }
 
-function h_assign_role(array $in): array
+function h_assign_role(array $in, array $user): array
 {
     $eventId = in_id($in, 'event_id', 'رویداد');
-    get_event_or_fail($eventId);
+    event_access($user, $eventId, 'tasks');
     $role = in_str($in, 'role', 100, true, 'نقش');
     $aid = in_int($in, 'assignee_id', 1, null, 'متصدی');
     $name = $aid ? staff_user_or_fail($aid)['full_name'] : null;
+    $titles = $aid ? array_column(q_all('SELECT title FROM event_tasks WHERE event_id = ? AND role_tag = ? AND (assignee_id IS NULL OR assignee_id <> ?)', [$eventId, $role, $aid]), 'title') : [];
     $n = q('UPDATE event_tasks SET assignee_id = ? WHERE event_id = ? AND role_tag = ?', [$aid, $eventId, $role])->rowCount();
+    if ($aid) notify_assignment((int)$aid, $eventId, $titles);
     log_action($eventId, $name ? "تمام وظایف نقش «{$role}» به «{$name}» محول شد ({$n} وظیفه)." : "متصدی وظایف نقش «{$role}» حذف شد.");
     return ['success' => true];
 }
 
-function h_quick_replace(array $in): array
+function h_quick_replace(array $in, array $user): array
 {
     $eventId = in_id($in, 'event_id', 'رویداد');
-    get_event_or_fail($eventId);
+    event_access($user, $eventId, 'tasks');
     $old = staff_user_or_fail(in_id($in, 'old_user_id', 'همکار غایب'));
     $new = staff_user_or_fail(in_id($in, 'new_user_id', 'همکار جایگزین'));
     if ((int)$old['id'] === (int)$new['id']) throw new ApiError('همکار غایب و جایگزین نمی‌توانند یکسان باشند.');
     // فقط وظایف انجام‌نشده منتقل می‌شوند تا سابقه انجام کارها حفظ شود
+    $titles = array_column(q_all('SELECT title FROM event_tasks WHERE event_id = ? AND assignee_id = ? AND is_done = 0', [$eventId, $old['id']]), 'title');
     $n = q('UPDATE event_tasks SET assignee_id = ? WHERE event_id = ? AND assignee_id = ? AND is_done = 0', [$new['id'], $eventId, $old['id']])->rowCount();
+    notify_assignment((int)$new['id'], $eventId, $titles);
     log_action($eventId, "جایگزینی سریع نیرو: {$n} وظیفه از «{$old['full_name']}» به «{$new['full_name']}» منتقل شد.");
     return ['success' => true, 'moved' => $n];
 }
 
-function h_add_quick_task(array $in): array
+function h_add_quick_task(array $in, array $user): array
 {
     $eventId = in_id($in, 'event_id', 'رویداد');
-    get_event_or_fail($eventId);
+    $ev = event_access($user, $eventId, 'tasks');
     $title = in_str($in, 'title', 255, true, 'عنوان وظیفه');
     $timing = (string)($in['timing'] ?? '');
-    q("INSERT INTO event_tasks (event_id, title, timing_tag, role_tag) VALUES (?, ?, ?, 'بدون پکیج')", [$eventId, $title, in_array($timing, TIMINGS, true) ? $timing : null]);
+    $timing = in_array($timing, TIMINGS, true) ? $timing : null;
+    $due = in_datetime($in, 'due_at', 'موعد');
+    $off = $due ? ($ev['start_date'] ? (int)round((strtotime($due) - strtotime($ev['start_date'])) / 60) : null) : ($timing ? default_due_offset($timing, $ev['start_date'], $ev['end_date']) : null);
+    if (!$due) $due = due_from_offset($ev['start_date'], $off);
+    q("INSERT INTO event_tasks (event_id, title, timing_tag, role_tag, due_at, due_offset_min) VALUES (?, ?, ?, 'بدون پکیج', ?, ?)", [$eventId, $title, $timing, $due, $off]);
     log_action($eventId, "وظیفه آزاد «{$title}» افزوده شد.");
     return ['success' => true];
 }
 
 /** ویرایش عنوان، نقش و فاز یک وظیفه */
-function h_update_task_info(array $in): array
+function h_update_task_info(array $in, array $user): array
 {
     $task = task_with_event(in_id($in, 'task_id', 'وظیفه'));
+    $ev = event_access($user, (int)$task['event_id'], 'tasks');
     $title = in_str($in, 'title', 255, true, 'عنوان وظیفه');
     $role = in_str($in, 'role_tag', 100, false, 'نقش');
     $timing = (string)($in['timing_tag'] ?? '');
     $timing = in_array($timing, TIMINGS, true) ? $timing : null;
-    q('UPDATE event_tasks SET title = ?, role_tag = ?, timing_tag = ? WHERE id = ?', [$title, $role !== '' ? $role : null, $timing, $task['id']]);
+    // موعد: اگر ارسال شده باشد ذخیره می‌شود و نسبت به شروع رویداد هم ثبت می‌شود تا با جابجایی تاریخ رویداد جابجا شود
+    $due = $task['due_at']; $off = $task['due_offset_min'];
+    if (array_key_exists('due_at', $in)) {
+        $due = in_datetime($in, 'due_at', 'موعد');
+        $off = ($due && $ev['start_date']) ? (int)round((strtotime($due) - strtotime($ev['start_date'])) / 60) : null;
+    }
+    q('UPDATE event_tasks SET title = ?, role_tag = ?, timing_tag = ?, due_at = ?, due_offset_min = ? WHERE id = ?', [$title, $role !== '' ? $role : null, $timing, $due, $off, $task['id']]);
     $changes = [];
     if ($task['title'] !== $title) $changes[] = "عنوان به «{$title}»";
     if ((string)$task['role_tag'] !== $role) $changes[] = 'نقش';
     if ((string)$task['timing_tag'] !== (string)$timing) $changes[] = 'فاز';
+    if ((string)$task['due_at'] !== (string)$due) $changes[] = 'موعد';
     if ($changes) log_action((int)$task['event_id'], "وظیفه «{$task['title']}» ویرایش شد: " . implode('، ', $changes) . '.');
     return ['success' => true];
 }
 
 /** حذف وظیفه: وظایف وابسته آزاد و درخواست‌های واگذاری آن لغو می‌شوند */
-function h_delete_task(array $in): array
+function h_delete_task(array $in, array $user): array
 {
     $task = task_with_event(in_id($in, 'task_id', 'وظیفه'));
+    event_access($user, (int)$task['event_id'], 'tasks');
     $pdo = db();
     $pdo->beginTransaction();
     q('UPDATE event_tasks SET depends_on_id = NULL WHERE depends_on_id = ?', [$task['id']]);
@@ -789,10 +931,11 @@ function h_delete_task(array $in): array
 // ===============================================================
 // مالی
 // ===============================================================
-function h_update_finance_item(array $in): array
+function h_update_finance_item(array $in, array $user): array
 {
     $row = q_one('SELECT * FROM event_services WHERE id = ?', [in_id($in, 'service_id', 'ردیف فاکتور')]);
     if (!$row) throw new ApiError('ردیف فاکتور یافت نشد.', 404);
+    event_access($user, (int)$row['event_id'], 'finance');
     $qty = in_int($in, 'qty', 0, 1000000, 'تعداد') ?? 0;
     $unit = in_money($in, 'unit_price', 'فی');
     $name = array_key_exists('service_name', $in) ? in_str($in, 'service_name', 100, true, 'شرح خدمات') : $row['service_name'];
@@ -802,31 +945,32 @@ function h_update_finance_item(array $in): array
     return ['success' => true];
 }
 
-function h_delete_finance_item(array $in): array
+function h_delete_finance_item(array $in, array $user): array
 {
     $row = q_one('SELECT * FROM event_services WHERE id = ?', [in_id($in, 'service_id', 'ردیف فاکتور')]);
     if (!$row) throw new ApiError('ردیف فاکتور یافت نشد.', 404);
+    event_access($user, (int)$row['event_id'], 'finance');
     q('DELETE FROM event_services WHERE id = ?', [$row['id']]);
     log_action((int)$row['event_id'], "ردیف فاکتور «{$row['service_name']}» حذف شد.");
     return ['success' => true];
 }
 
-function h_update_finance_totals(array $in): array
+function h_update_finance_totals(array $in, array $user): array
 {
     $eventId = in_id($in, 'event_id', 'رویداد');
-    get_event_or_fail($eventId);
+    event_access($user, $eventId, 'finance');
     $discount = in_money($in, 'discount', 'تخفیف') ?? 0;
     $tax = in_int($in, 'tax_percent', 0, 100, 'درصد مالیات') ?? 0;
-    $deposit = in_money($in, 'deposit', 'بیعانه') ?? 0;
-    q('UPDATE events SET discount = ?, tax_percent = ?, deposit = ? WHERE id = ?', [$discount, $tax, $deposit, $eventId]);
-    log_action($eventId, 'ضرایب فاکتور نهایی (تخفیف/مالیات/بیعانه) به‌روزرسانی شد.');
+    // بیعانه اکنون به‌صورت پرداخت جداگانه ثبت می‌شود
+    q('UPDATE events SET discount = ?, tax_percent = ? WHERE id = ?', [$discount, $tax, $eventId]);
+    log_action($eventId, 'ضرایب فاکتور نهایی (تخفیف/مالیات) به‌روزرسانی شد.');
     return ['success' => true];
 }
 
-function h_add_adhoc_service(array $in): array
+function h_add_adhoc_service(array $in, array $user): array
 {
     $eventId = in_id($in, 'event_id', 'رویداد');
-    get_event_or_fail($eventId);
+    event_access($user, $eventId, 'finance');
     $name = in_str($in, 'name', 100, true, 'نام سرویس');
     $price = in_money($in, 'price', 'مبلغ');
     q("INSERT INTO event_services (event_id, service_name, frozen_price, cost_type, unit_price, qty) VALUES (?, ?, ?, 'cumulative', ?, 1)", [$eventId, $name, $price, $price]);
@@ -849,11 +993,14 @@ function h_request_delegation(array $in, array $user): array
         throw new ApiError('برای این وظیفه یک درخواست واگذاری در انتظار بررسی وجود دارد.');
     }
     q('INSERT INTO delegations (task_id, event_id, from_user_id, to_user_id) VALUES (?, ?, ?, ?)', [$task['id'], $task['event_id'], $user['id'], $to['id']]);
-    notify(0, 'SYSTEM_DELEGATION_REQUEST', 'delegation', (int)db()->lastInsertId());
+    $delId = (int)db()->lastInsertId();
+    notify(0, 'SYSTEM_DELEGATION_REQUEST', 'delegation', $delId);
+    $mgr = (int)(q_val('SELECT manager_id FROM events WHERE id = ?', [$task['event_id']]) ?? 0);
+    if ($mgr) notify($mgr, 'SYSTEM_DELEGATION_REQUEST', 'delegation', $delId);
     return ['success' => true];
 }
 
-function h_resolve_delegation(array $in): array
+function h_resolve_delegation(array $in, array $user): array
 {
     $delId = in_id($in, 'delegation_id', 'درخواست واگذاری');
     $status = (string)($in['status'] ?? '');
@@ -875,6 +1022,7 @@ function h_resolve_delegation(array $in): array
     }
     $eventId = (int)$d['event_id'];
     $title = $d['task_title'];
+    event_access($user, $eventId, 'tasks');
     if ($status === 'approved' && ((int)$d['assignee_id'] !== (int)$d['from_user_id'] || (int)$d['is_done'] === 1)) {
         q("UPDATE delegations SET status = 'cancelled' WHERE id = ?", [$delId]);
         $pdo->commit();
@@ -884,10 +1032,12 @@ function h_resolve_delegation(array $in): array
     if ($status === 'approved') {
         q('UPDATE event_tasks SET assignee_id = ? WHERE id = ?', [$d['to_user_id'], $d['task_id']]);
         notify((int)$d['from_user_id'], "مدیریت با درخواست واگذاری وظیفه «{$title}» موافقت کرد.", 'success', $eventId);
-        notify((int)$d['to_user_id'], "وظیفه «{$title}» از سوی مدیریت به شما محول شد.", 'info', $eventId);
+        if (sms_enabled('delegation')) sms_to_user((int)$d['from_user_id'], "مدیریت با درخواست واگذاری وظیفه «{$title}» موافقت کرد.");
+        notify_assignment((int)$d['to_user_id'], $eventId, [$title]);
         log_action($eventId, "وظیفه «{$title}» از طریق سیستم واگذاری به «{$d['to_name']}» منتقل شد.");
     } else {
         notify((int)$d['from_user_id'], "مدیریت با واگذاری وظیفه «{$title}» مخالفت کرد.", 'error', $eventId);
+        if (sms_enabled('delegation')) sms_to_user((int)$d['from_user_id'], "مدیریت با واگذاری وظیفه «{$title}» مخالفت کرد.");
         log_action($eventId, "درخواست واگذاری وظیفه «{$title}» رد شد.");
     }
     $pdo->commit();

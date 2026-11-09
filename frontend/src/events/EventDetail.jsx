@@ -7,11 +7,17 @@ import { Icons } from '../components/Icons';
 import { EventTimer } from '../components/EventTimer';
 import JalaliDatePicker from '../components/JalaliDatePicker';
 import { NumInput, CommitNumInput } from '../components/NumInput';
+import { isOverdue, dueLabel, ROLE_LABELS } from '../lib/utils';
+import GuestsTab from './GuestsTab';
+import ExtrasPanel, { TaskExtrasModal } from '../components/ExtrasPanel';
+import { PaymentsPanel, FeesPanel, PortalPanel, RatingsPanel, duplicateEvent } from './EventExtras';
 
 export const DETAIL_TABS = [
     { id: 'operations', label: 'فازهای عملیاتی' },
     { id: 'finance', label: 'فاکتور' },
     { id: 'team', label: 'تخصیص‌ها' },
+    { id: 'guests', label: 'مهمانان' },
+    { id: 'files', label: 'فایل‌ها و یادداشت‌ها' },
     { id: 'logs', label: 'گزارشات زنده' },
 ];
 
@@ -72,7 +78,7 @@ function InvoicePrint({ ev, services, totals }) {
 // =====================================
 // داشبورد اتاق فرمان رویداد
 // =====================================
-export default function EventDetail({ eventId, onBack, md, tab = 'operations', onTabChange }) {
+export default function EventDetail({ eventId, onBack, md, user, tab = 'operations', onTabChange }) {
     const [data, setData] = useState(null);
     const [notFound, setNotFound] = useState(false);
     const [activePhase, setActivePhase] = useState('');
@@ -81,7 +87,9 @@ export default function EventDetail({ eventId, onBack, md, tab = 'operations', o
     const [qrOld, setQrOld] = useState('');
     const [qrNew, setQrNew] = useState('');
     const [busy, setBusy] = useState(false);
+    const [extrasTask, setExtrasTask] = useState(null);
     const staff = md?.staff || [];
+    const assignable = staff.filter(s => ['staff', 'manager'].includes(s.role || 'staff'));
 
     const loadData = async () => {
         const res = await api('get_event_detail', null, { id: eventId }, { silent: !!data });
@@ -128,7 +136,10 @@ export default function EventDetail({ eventId, onBack, md, tab = 'operations', o
     const taxPercent = Number(ev.tax_percent) || 0;
     const taxAmount = ((subTotal - discount) * taxPercent) / 100;
     const total = subTotal - discount + taxAmount;
-    const deposit = Number(ev.deposit) || 0;
+    const deposit = Number(data.fin?.paid) || 0;
+    const access = data.access || { tasks: true, finance: true, admin: true };
+    const busyMap = data.conflicts?.busy || {};
+    const conflicts = data.conflicts || { venue: [], staff: [] };
     const remaining = total - deposit;
     const tbdCount = services.filter(s => s.frozen_price === null || s.frozen_price === undefined).length;
     const totals = { subTotal, discount, taxPercent, taxAmount, total, deposit, remaining, tbdCount };
@@ -149,7 +160,7 @@ export default function EventDetail({ eventId, onBack, md, tab = 'operations', o
 
     const staffOptions = (currentId) => (
         <>
-            {staff.map(s => <option key={s.id} value={s.id}>{toPersianNum(s.full_name)} {isOn(s.is_shadow) ? '(📞)' : ''}</option>)}
+            {assignable.map(s => <option key={s.id} value={s.id}>{toPersianNum(s.full_name)} {isOn(s.is_shadow) ? '(📞)' : ''}{busyMap[s.id] && s.id != currentId ? ` — ⚠ هم‌زمان در «${busyMap[s.id][0]}»` : ''}</option>)}
             {currentId && !staff.some(s => s.id == currentId) && <option value={currentId}>(کاربر حذف‌شده)</option>}
         </>
     );
@@ -171,6 +182,7 @@ export default function EventDetail({ eventId, onBack, md, tab = 'operations', o
             fields: [
                 { name: 'title', label: 'عنوان وظیفه', required: true },
                 { name: 'timing', label: 'فاز', type: 'select', value: TIMINGS.includes(activePhase) ? activePhase : TIMINGS[0], options: timingOptions },
+                { name: 'due_at', label: 'موعد (خالی = پیش‌فرض فاز)', type: 'datetime' },
             ],
             confirmText: 'افزودن',
         });
@@ -183,6 +195,7 @@ export default function EventDetail({ eventId, onBack, md, tab = 'operations', o
                 { name: 'title', label: 'عنوان', value: t.title, required: true },
                 { name: 'role_tag', label: 'نقش', value: t.role_tag || '' },
                 { name: 'timing_tag', label: 'فاز', type: 'select', value: TIMINGS.includes(t.timing_tag) ? t.timing_tag : TIMINGS[0], options: timingOptions },
+                { name: 'due_at', label: 'موعد انجام', type: 'datetime', value: t.due_at ? t.due_at.slice(0, 16).replace(' ', 'T') : '' },
             ],
             confirmText: 'ذخیره',
         });
@@ -239,13 +252,15 @@ export default function EventDetail({ eventId, onBack, md, tab = 'operations', o
 
     // ---------- ویرایش اطلاعات پایه ----------
     const openEditModal = () => {
-        setEditForm({ venue_id: ev.venue_id || '', guest_count: ev.guest_count ?? '', start_date: ev.start_date ? ev.start_date.slice(0, 16).replace(' ', 'T') : '', end_date: ev.end_date ? ev.end_date.slice(0, 16).replace(' ', 'T') : '' });
+        setEditForm({ title: ev.title, manager_id: ev.manager_id || '', venue_id: ev.venue_id || '', guest_count: ev.guest_count ?? '', start_date: ev.start_date ? ev.start_date.slice(0, 16).replace(' ', 'T') : '', end_date: ev.end_date ? ev.end_date.slice(0, 16).replace(' ', 'T') : '' });
         setEditModal(true);
     };
     const saveEditEvent = async () => {
         const s = parseDate(editForm.start_date), e = parseDate(editForm.end_date);
         if (s && e && e < s) return toast('تاریخ پایان رویداد نمی‌تواند قبل از تاریخ شروع باشد.', 'warning');
-        const res = await apiCall('update_event_details', { ...editForm, venue_id: editForm.venue_id || null }, 'اطلاعات رویداد ذخیره شد.');
+        const body = { ...editForm, venue_id: editForm.venue_id || null, manager_id: editForm.manager_id || null };
+        if (!access.admin) delete body.manager_id;
+        const res = await apiCall('update_event_details', body, 'اطلاعات رویداد ذخیره شد.');
         if (res) setEditModal(false);
     };
 
@@ -266,16 +281,26 @@ export default function EventDetail({ eventId, onBack, md, tab = 'operations', o
                         {delegations.length > 0 && <button type="button" onClick={() => onTabChange('team')} className="bg-red-500 text-white px-2.5 py-0.5 rounded-lg text-xs font-semibold">{toPersianNum(delegations.length)} درخواست واگذاری</button>}
                     </div>
                     <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 dark:text-white">{toPersianNum(ev.title)}</h1>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">مدیر پروژه: {ev.manager_name ? toPersianNum(ev.manager_name) : 'مدیر کل'}{ev.client_approved_at && <span className="text-emerald-700 dark:text-emerald-400 font-semibold mr-2">· ✓ تایید کارفرما</span>}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                    <button type="button" onClick={openEditModal} className="glass border-2 text-slate-700 dark:text-slate-300 px-4 py-2.5 rounded-xl font-semibold hover:bg-white/60 dark:hover:bg-white/10 inline-flex items-center gap-2"><Icons.Edit /> ویرایش اطلاعات</button>
+                    {access.tasks && <button type="button" onClick={() => duplicateEvent(ev, false)} className="glass border px-3.5 py-2.5 rounded-xl font-semibold text-sm">کپی رویداد</button>}
+                    {access.tasks && <button type="button" onClick={() => duplicateEvent(ev, true)} className="glass border px-3.5 py-2.5 rounded-xl font-semibold text-sm">ذخیره به‌عنوان قالب</button>}
+                    {access.tasks && <button type="button" onClick={openEditModal} className="glass border-2 text-slate-700 dark:text-slate-300 px-4 py-2.5 rounded-xl font-semibold hover:bg-white/60 dark:hover:bg-white/10 inline-flex items-center gap-2"><Icons.Edit /> ویرایش اطلاعات</button>}
                     <label className="sr-only" htmlFor="ev-status">وضعیت رویداد</label>
-                    <select id="ev-status" value={ev.status} onChange={e => apiCall('update_event_status', { status: e.target.value }, 'وضعیت رویداد تغییر کرد.')} className="bg-grad text-white px-4 py-2.5 rounded-xl font-semibold cursor-pointer">
+                    <select id="ev-status" disabled={!access.tasks} value={ev.status} onChange={e => apiCall('update_event_status', { status: e.target.value }, 'وضعیت رویداد تغییر کرد.')} className="bg-grad text-white px-4 py-2.5 rounded-xl font-semibold cursor-pointer">
                         {Object.entries(EVENT_STATUS).map(([k, v]) => <option key={k} value={k}>وضعیت: {v.label}</option>)}
                     </select>
                 </div>
             </div>
 
+            {(conflicts.venue.length > 0 || conflicts.staff.length > 0) && (
+                <div className="mb-5 rounded-2xl border border-red-300 dark:border-red-800 bg-red-50/80 dark:bg-red-900/20 p-4 text-sm text-red-800 dark:text-red-200" role="alert">
+                    <b className="block mb-1">⚠ تداخل زمانی با رویدادهای دیگر</b>
+                    {conflicts.venue.map(c => <div key={'v' + c.event_id}>مکان «{toPersianNum(c.venue_name)}» هم‌زمان برای «{toPersianNum(c.title)}» رزرو شده است.</div>)}
+                    {conflicts.staff.map(c => <div key={'s' + c.user_id}>«{toPersianNum(c.full_name)}» هم‌زمان در {c.events.map(e => `«${toPersianNum(e)}»`).join('، ')} وظیفه دارد.</div>)}
+                </div>
+            )}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
                 <div className={`${card} p-4 relative overflow-hidden`}>
                     <div className="text-xs text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1.5"><Icons.Building /> سازمان</div>
@@ -301,7 +326,7 @@ export default function EventDetail({ eventId, onBack, md, tab = 'operations', o
 
             <div className="flex gap-1 mb-5 border-b-2 border-violet-200/60 dark:border-white/10 overflow-x-auto custom-scroll" role="tablist">
                 {DETAIL_TABS.map(t => (
-                    <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => onTabChange(t.id)} className={`px-5 py-2.5 rounded-t-xl font-semibold whitespace-nowrap transition-colors ${tab === t.id ? 'bg-grad text-white' : 'text-slate-600 dark:text-slate-400 hover:bg-white/60 dark:hover:bg-white/10'}`}>{t.label}{t.id === 'team' && delegations.length > 0 ? ` (${toPersianNum(delegations.length)})` : ''}</button>
+                    <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => onTabChange(t.id)} className={`px-5 py-2.5 rounded-t-xl font-semibold whitespace-nowrap transition-colors ${tab === t.id ? 'bg-grad text-white' : 'text-slate-600 dark:text-slate-400 hover:bg-white/60 dark:hover:bg-white/10'}`}>{t.label}{t.id === 'team' && delegations.length > 0 ? ` (${toPersianNum(delegations.length)})` : ''}{t.id === 'guests' && Number(data.guest_stats?.total) > 0 ? ` (${toPersianNum(data.guest_stats.checked_in || 0)}/${toPersianNum(data.guest_stats.total)})` : ''}</button>
                 ))}
             </div>
 
@@ -323,7 +348,7 @@ export default function EventDetail({ eventId, onBack, md, tab = 'operations', o
                     <div className="glass-soft border-2 border-violet-200/60 dark:border-white/10 rounded-3xl p-3 sm:p-6 min-h-[40vh]">
                         <div className="flex justify-between items-center mb-4 gap-3">
                             <h2 className="text-lg sm:text-xl font-bold text-slate-800 dark:text-white">تسک‌های فاز: <span className="text-indigo-600 dark:text-indigo-400">{activePhase}</span></h2>
-                            <button type="button" onClick={addQuickTask} className="text-indigo-700 dark:text-indigo-300 font-semibold px-4 py-2 rounded-xl hover:bg-white/60 dark:hover:bg-white/10 whitespace-nowrap bg-grad-soft">+ تسک آزاد</button>
+                            <button type="button" disabled={!access.tasks} onClick={addQuickTask} className="text-indigo-700 dark:text-indigo-300 font-semibold px-4 py-2 rounded-xl hover:bg-white/60 dark:hover:bg-white/10 whitespace-nowrap bg-grad-soft">+ تسک آزاد</button>
                         </div>
 
                         <ul className="space-y-3">
@@ -342,6 +367,8 @@ export default function EventDetail({ eventId, onBack, md, tab = 'operations', o
                                                     {t.role_tag && <span className="text-xs text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800 bg-grad-soft">@{toPersianNum(t.role_tag)}</span>}
                                                     {locked && <span className="text-xs text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/40 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-800 inline-flex items-center gap-1"><Icons.Lock /> منتظر: {toPersianNum(t.dep_title)}</span>}
                                                     {hasIssue && <span className="text-xs text-red-700 bg-red-100 px-2 py-0.5 rounded-md border border-red-200">مانع: {toPersianNum(t.issue_note)}</span>}
+                                                    {t.due_at && !done && <span className={`text-xs px-2 py-0.5 rounded-md border inline-flex items-center gap-1 ${isOverdue(t) ? 'text-red-700 bg-red-50 border-red-300 dark:bg-red-900/30 dark:text-red-300 font-semibold' : 'text-slate-600 dark:text-slate-300 glass-soft'}`} title={toJalaliDateTime(t.due_at)}><Icons.Clock /> {isOverdue(t) ? 'عقب‌افتاده: ' : 'موعد: '}{dueLabel(t.due_at)}</span>}
+                                                    <button type="button" onClick={() => setExtrasTask(t)} className="text-xs px-2 py-0.5 rounded-md border glass-soft text-slate-600 dark:text-slate-300 hover:border-violet-400" aria-label={`فایل‌ها و یادداشت‌های «${t.title}»`}>📎 {toPersianNum(Number(t.attach_count) || 0)} · 💬 {toPersianNum(Number(t.note_count) || 0)}</button>
                                                 </div>
                                             </div>
                                         </div>
@@ -349,14 +376,16 @@ export default function EventDetail({ eventId, onBack, md, tab = 'operations', o
                                             {/* تخصیص متصدی حتی برای تسک‌های قفل هم ممکن است */}
                                             <div className="flex relative flex-1 sm:w-52 sm:flex-none">
                                                 {t.assignee_avatar && <img src={t.assignee_avatar} alt="" className="w-8 h-8 rounded-full border-2 border-white dark:border-white/10 absolute right-1.5 top-1.5 z-10 pointer-events-none object-cover bg-white" />}
-                                                <select aria-label={`متصدی «${t.title}»`} disabled={busy} value={t.assignee_id || ''} onChange={e => apiCall('update_task', { task_id: t.id, assignee_id: e.target.value ? Number(e.target.value) : null })} className={`border-2 p-2.5 rounded-xl font-semibold w-full appearance-none cursor-pointer text-sm ${t.assignee_avatar ? 'pr-11' : ''} ${!t.assignee_id ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200' : 'glass dark:text-white'}`}>
+                                                <select aria-label={`متصدی «${t.title}»`} disabled={busy || !access.tasks} value={t.assignee_id || ''} onChange={e => apiCall('update_task', { task_id: t.id, assignee_id: e.target.value ? Number(e.target.value) : null })} className={`border-2 p-2.5 rounded-xl font-semibold w-full appearance-none cursor-pointer text-sm ${t.assignee_avatar ? 'pr-11' : ''} ${!t.assignee_id ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200' : 'glass dark:text-white'}`}>
                                                     <option value="">(بدون متصدی)</option>
                                                     {staffOptions(t.assignee_id)}
                                                 </select>
                                             </div>
+                                            {access.tasks && <>
                                             <button type="button" disabled={busy} onClick={() => reportIssue(t)} className={`px-3 py-2.5 rounded-xl font-semibold text-sm border whitespace-nowrap ${hasIssue ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' : 'glass text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30'}`}>{hasIssue ? 'رفع مانع' : 'گزارش مانع'}</button>
                                             <button type="button" onClick={() => editTask(t)} className={iconBtn} aria-label={`ویرایش «${t.title}»`} title="ویرایش"><Icons.Edit /></button>
                                             <button type="button" onClick={() => deleteTask(t)} className={`${iconBtn} text-red-500 hover:text-red-700`} aria-label={`حذف «${t.title}»`} title="حذف"><Icons.Trash /></button>
+                                            </>}
                                         </div>
                                     </li>
                                 );
@@ -452,12 +481,20 @@ export default function EventDetail({ eventId, onBack, md, tab = 'operations', o
                                 <div className="text-slate-300 text-sm mb-1">مبلغ نهایی فاکتور:</div>
                                 <div className="text-3xl font-bold text-emerald-400 text-left" dir="ltr">{formatMoney(Math.round(total))}</div>
                             </div>
-                            <div className="flex justify-between items-center gap-3 pt-3 border-t border-slate-700">
-                                <span className="text-sm text-amber-300">بیعانه پرداختی:</span>
-                                <span className="w-40"><CommitNumInput money label="بیعانه" value={ev.deposit} onCommit={v => commitTotals({ deposit: v })} className="w-full border border-amber-600/50 p-2 rounded-lg text-sm text-amber-300 bg-white/10 border-white/20" dir="ltr" /></span>
+                            <div className="flex justify-between items-center gap-3 pt-3 border-t border-slate-700 text-sm">
+                                <span className="text-amber-300">پرداخت‌شده (از بخش پرداخت‌ها):</span>
+                                <b className="text-amber-200" dir="ltr">{formatMoney(deposit)}</b>
                             </div>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {tab === 'finance' && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-5">
+                    <PaymentsPanel eventId={eventId} payments={data.payments || []} fin={data.fin} canEdit={access.finance} reload={loadData} />
+                    <FeesPanel eventId={eventId} fees={data.fees || []} tasks={tasks} staff={staff} fin={data.fin} canEdit={access.finance} reload={loadData} />
+                    {access.finance && <div className="lg:col-span-2"><PortalPanel ev={ev} reload={loadData} /></div>}
                 </div>
             )}
 
@@ -477,7 +514,7 @@ export default function EventDetail({ eventId, onBack, md, tab = 'operations', o
                                             <div className="font-semibold text-indigo-700 dark:text-indigo-300">@{toPersianNum(role)}</div>
                                             <div className="glass text-xs text-slate-600 dark:text-slate-300 px-2.5 py-1 rounded-lg border whitespace-nowrap">{toPersianNum(roleTasks.length)} وظیفه</div>
                                         </div>
-                                        <select aria-label={`متصدی نقش ${role}`} disabled={busy} value={common} onChange={e => assignRole(role, e.target.value)} className={`w-full border-2 p-3 rounded-xl font-semibold cursor-pointer ${common ? 'border-green-400 bg-green-50 dark:bg-green-900/30 dark:text-white' : 'glass dark:text-white'}`}>
+                                        <select aria-label={`متصدی نقش ${role}`} disabled={busy || !access.tasks} value={common} onChange={e => assignRole(role, e.target.value)} className={`w-full border-2 p-3 rounded-xl font-semibold cursor-pointer ${common ? 'border-green-400 bg-green-50 dark:bg-green-900/30 dark:text-white' : 'glass dark:text-white'}`}>
                                             <option value="">{ids.length > 1 ? '(چند متصدی مختلف — انتخاب برای یکسان‌سازی)' : '(انتخاب متصدی برای تمام وظایف این نقش)'}</option>
                                             {staffOptions(common)}
                                         </select>
@@ -496,8 +533,8 @@ export default function EventDetail({ eventId, onBack, md, tab = 'operations', o
                                         <div key={d.id} className="glass-soft p-4 rounded-2xl border">
                                             <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed mb-3">({toPersianNum(d.from_name)}) درخواست واگذاری «{toPersianNum(d.task_title)}» به ({toPersianNum(d.to_name)}) را دارد.</p>
                                             <div className="flex gap-2">
-                                                <button type="button" disabled={busy} onClick={() => resolveDelegation(d.id, 'approved')} className="flex-1 bg-green-600 text-white font-semibold py-2 rounded-lg hover:bg-green-700">تایید واگذاری</button>
-                                                <button type="button" disabled={busy} onClick={() => resolveDelegation(d.id, 'rejected')} className="glass flex-1 text-slate-700 dark:text-slate-300 border font-semibold py-2 rounded-lg hover:bg-white/60">رد درخواست</button>
+                                                <button type="button" disabled={busy || !access.tasks} onClick={() => resolveDelegation(d.id, 'approved')} className="flex-1 bg-green-600 text-white font-semibold py-2 rounded-lg hover:bg-green-700">تایید واگذاری</button>
+                                                <button type="button" disabled={busy || !access.tasks} onClick={() => resolveDelegation(d.id, 'rejected')} className="glass flex-1 text-slate-700 dark:text-slate-300 border font-semibold py-2 rounded-lg hover:bg-white/60">رد درخواست</button>
                                             </div>
                                         </div>
                                     ))}
@@ -517,12 +554,20 @@ export default function EventDetail({ eventId, onBack, md, tab = 'operations', o
                                     <option value="">۲. همکار جایگزین را انتخاب کنید...</option>
                                     {staff.filter(s => String(s.id) !== String(qrOld)).map(s => <option key={'n' + s.id} value={s.id}>{toPersianNum(s.full_name)}</option>)}
                                 </select>
-                                <button type="button" disabled={busy} onClick={handleQuickReplace} className="w-full bg-amber-500 text-amber-950 font-bold p-3.5 rounded-xl hover:bg-amber-400 mt-2">انتقال وظایف انجام‌نشده</button>
+                                <button type="button" disabled={busy || !access.tasks} onClick={handleQuickReplace} className="w-full bg-amber-500 text-amber-950 font-bold p-3.5 rounded-xl hover:bg-amber-400 mt-2">انتقال وظایف انجام‌نشده</button>
                             </div>
                         </div>
                     </div>
                 </div>
             )}
+
+            {tab === 'team' && <div className="mt-5"><RatingsPanel ev={ev} tasks={tasks} staff={staff} ratings={data.ratings || []} canEdit={access.tasks} reload={loadData} /></div>}
+
+            {tab === 'guests' && <GuestsTab eventId={eventId} eventTitle={ev.title} />}
+
+            {tab === 'files' && <div className="glass rounded-3xl border p-5 sm:p-7 fade-in"><ExtrasPanel eventId={eventId} tasks={tasks} currentUserId={user?.id} onChanged={loadData} /></div>}
+
+            {extrasTask && <TaskExtrasModal eventId={eventId} task={extrasTask} currentUserId={user?.id} onClose={() => setExtrasTask(null)} onChanged={loadData} />}
 
             {tab === 'logs' && (
                 <div className={`${card} p-5 md:p-7 fade-in h-[70vh] flex flex-col`}>
@@ -543,7 +588,7 @@ export default function EventDetail({ eventId, onBack, md, tab = 'operations', o
                                     <div className="text-sm text-slate-800 dark:text-slate-200 leading-relaxed mb-1">{toPersianNum(log.action)}</div>
                                     <div className="text-xs text-slate-500 dark:text-slate-400 flex flex-wrap gap-3">
                                         <span>توسط: <b className="text-indigo-700 dark:text-indigo-400 font-semibold">{log.user_name}</b></span>
-                                        <span dir="ltr">{toJalaliDateTime(log.created_at)}</span>
+                                        <bdi>{toJalaliDateTime(log.created_at)}</bdi>
                                     </div>
                                 </div>
                             </li>
@@ -557,6 +602,19 @@ export default function EventDetail({ eventId, onBack, md, tab = 'operations', o
                     <div className="glass-strong w-full sm:max-w-md p-6 sm:p-7 rounded-t-3xl sm:rounded-3xl max-h-full overflow-y-auto custom-scroll">
                         <h2 id="edit-ev-title" className="text-xl font-bold text-slate-800 dark:text-white mb-5 border-b dark:border-white/10 pb-3">ویرایش اطلاعات پایه</h2>
                         <div className="space-y-4">
+                            <label className="block">
+                                <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 block">عنوان رویداد</span>
+                                <input value={editForm.title || ''} onChange={e => setEditForm({ ...editForm, title: e.target.value })} className="glass-field w-full border-2 p-3 rounded-xl font-semibold" />
+                            </label>
+                            {access.admin && (
+                                <label className="block">
+                                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 block">مدیر پروژه</span>
+                                    <select value={editForm.manager_id} onChange={e => setEditForm({ ...editForm, manager_id: e.target.value })} className="glass-field w-full border-2 p-3 rounded-xl font-semibold">
+                                        <option value="">(بدون مدیر پروژه — فقط مدیر کل)</option>
+                                        {(md?.managers || []).map(m => <option key={m.id} value={m.id}>{toPersianNum(m.full_name)}</option>)}
+                                    </select>
+                                </label>
+                            )}
                             <label className="block">
                                 <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 block">تعداد مهمانان (در فاکتور اثر دارد)</span>
                                 <NumInput value={editForm.guest_count} onChange={v => setEditForm({ ...editForm, guest_count: v })} className="w-full border-2 dark:border-white/10 p-3 rounded-xl font-semibold focus:border-indigo-500 dark:text-white" dir="ltr" />

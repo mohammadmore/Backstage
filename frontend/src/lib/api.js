@@ -44,3 +44,25 @@ export async function api(action, body = null, params = {}, opts = {}) {
   }
   return data;
 }
+
+/** آپلود فایل (multipart) */
+export async function apiUpload(action, fields, file, opts = {}) {
+  const fd = new FormData();
+  Object.entries(fields || {}).forEach(([k, v]) => { if (v !== null && v !== undefined) fd.append(k, v); });
+  fd.append('file', file);
+  busyStart();
+  let res, data = null;
+  try {
+    res = await fetch(`api.php?action=${encodeURIComponent(action)}`, { method: 'POST', credentials: 'same-origin', headers: { 'X-Requested-With': 'EventMaster' }, body: fd });
+    data = await res.json();
+  } catch (e) {
+    if (!opts.silent) toast('ارسال فایل ناموفق بود.', 'error');
+    return null;
+  } finally { busyEnd(); }
+  if (res.status === 401) { if (unauthorizedHandler) unauthorizedHandler(); return null; }
+  if (!res.ok || data.error) { if (!opts.silent) toast(data.error || 'خطای ناشناخته', 'error'); return null; }
+  return data;
+}
+
+/** آدرس دانلود فایل‌ها (کوکی نشست ارسال می‌شود) */
+export const apiUrl = (action, params = {}) => `api.php?${new URLSearchParams({ action, ...params }).toString()}`;

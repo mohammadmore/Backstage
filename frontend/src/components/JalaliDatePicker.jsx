@@ -8,7 +8,7 @@ const selCls = 'glass-soft border p-2 rounded-lg dark:text-white outline-none fo
  * - تا زمانی که سال/ماه/روز کامل انتخاب نشده، مقداری ارسال نمی‌شود (قبلاً تاریخ پیش‌فرض ۱۴۰۳ نمایش داده می‌شد ولی ذخیره نمی‌شد)
  * - تعداد روزهای هر ماه (و اسفند کبیسه) درست محاسبه می‌شود
  */
-export default function JalaliDatePicker({ value, onChange }) {
+export default function JalaliDatePicker({ value, onChange, dateOnly = false, clearable = false }) {
   const [parts, setParts] = useState({ y: '', m: '', d: '', h: 0, mn: 0 });
 
   useEffect(() => {
@@ -56,6 +56,7 @@ export default function JalaliDatePicker({ value, onChange }) {
         <option value="">روز</option>
         {[...Array(dayCount)].map((_, i) => <option key={i} value={i + 1}>{toPersianNum(i + 1)}</option>)}
       </select>
+      {!dateOnly && <>
       <span className="font-bold text-slate-300 dark:text-slate-600 self-center hidden sm:inline">|</span>
       <select aria-label="ساعت" value={parts.h} onChange={(e) => update('h', e.target.value)} className={`w-16 ${selCls}`}>
         {[...Array(24)].map((_, i) => <option key={i} value={i}>{toPersianNum(String(i).padStart(2, '0'))}</option>)}
@@ -64,6 +65,8 @@ export default function JalaliDatePicker({ value, onChange }) {
       <select aria-label="دقیقه" value={parts.mn} onChange={(e) => update('mn', e.target.value)} className={`w-16 ${selCls}`}>
         {[...Array(60)].map((_, i) => <option key={i} value={i}>{toPersianNum(String(i).padStart(2, '0'))}</option>)}
       </select>
+      </>}
+      {clearable && value && <button type="button" onClick={() => { setParts({ y: '', m: '', d: '', h: 0, mn: 0 }); onChange(''); }} className="px-2 text-xs font-semibold text-red-600" aria-label="پاک کردن تاریخ">✕</button>}
     </div>
   );
 }

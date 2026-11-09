@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 if (!defined('EVENT_APP')) { http_response_code(403); exit; }
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 /**
  * مهاجرت نسخه‌بندی‌شده دیتابیس.
@@ -23,7 +23,7 @@ function run_migrations(): void
     }
     try {
         $version = (int)(q_val("SELECT v FROM schema_meta WHERE k = 'version'") ?? 0);
-        $steps = [1 => 'migration_1', 2 => 'migration_2', 3 => 'migration_3'];
+        $steps = [1 => 'migration_1', 2 => 'migration_2', 3 => 'migration_3', 4 => 'migration_4'];
         foreach ($steps as $v => $fn) {
             if ($version < $v) {
                 $fn($pdo);
@@ -148,4 +148,65 @@ function migration_3(PDO $pdo): void
     try_exec($pdo, "ALTER TABLE `users` ADD COLUMN `must_change_password` tinyint(1) NOT NULL DEFAULT 0");
     try_exec($pdo, "ALTER TABLE `users` ADD COLUMN `session_version` int(11) NOT NULL DEFAULT 0");
     // رمزهای ضعیف قدیمی (مثل 123456) هنگام اولین ورود تشخیص داده می‌شوند، چون اکنون فقط هش آن‌ها موجود است
+}
+
+/** قابلیت‌های نسخه ۳: تقویم، پرداخت‌ها، موعد تسک‌ها، قالب، پورتال، هزینه نیروها، امتیاز، پیوست‌ها، مهمانان، نقش‌ها، ۲FA */
+function migration_4(PDO $pdo): void
+{
+    $T = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4';
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `settings` (`k` varchar(64) NOT NULL, `v` text, PRIMARY KEY (`k`)) $T");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `payments` (`id` int(11) NOT NULL AUTO_INCREMENT, `event_id` int(11) NOT NULL, `amount` decimal(15,2) NOT NULL, `paid_at` date NOT NULL, `method` varchar(50) DEFAULT NULL, `note` varchar(255) DEFAULT NULL, `created_by` varchar(100) DEFAULT NULL, `created_at` timestamp DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (`id`), KEY `idx_pay_event` (`event_id`)) $T");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `event_staff_fees` (`id` int(11) NOT NULL AUTO_INCREMENT, `event_id` int(11) NOT NULL, `user_id` int(11) NOT NULL, `amount` decimal(15,2) NOT NULL DEFAULT 0, `note` varchar(255) DEFAULT NULL, `paid_at` date DEFAULT NULL, PRIMARY KEY (`id`), UNIQUE KEY `uniq_fee` (`event_id`, `user_id`), KEY `idx_fee_user` (`user_id`)) $T");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `ratings` (`id` int(11) NOT NULL AUTO_INCREMENT, `event_id` int(11) NOT NULL, `target_type` varchar(10) NOT NULL, `target_id` int(11) NOT NULL, `score` tinyint(1) NOT NULL, `comment` varchar(500) DEFAULT NULL, `rated_by` varchar(100) DEFAULT NULL, `created_at` timestamp DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (`id`), UNIQUE KEY `uniq_rating` (`event_id`, `target_type`, `target_id`), KEY `idx_rating_target` (`target_type`, `target_id`)) $T");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `attachments` (`id` int(11) NOT NULL AUTO_INCREMENT, `event_id` int(11) NOT NULL, `task_id` int(11) DEFAULT NULL, `stored_name` varchar(100) NOT NULL, `orig_name` varchar(255) NOT NULL, `mime` varchar(100) DEFAULT NULL, `size` int(11) DEFAULT 0, `uploaded_by` varchar(100) DEFAULT NULL, `uploader_id` int(11) DEFAULT NULL, `created_at` timestamp DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (`id`), KEY `idx_att_event` (`event_id`), KEY `idx_att_task` (`task_id`)) $T");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `notes` (`id` int(11) NOT NULL AUTO_INCREMENT, `event_id` int(11) NOT NULL, `task_id` int(11) DEFAULT NULL, `user_id` int(11) DEFAULT NULL, `user_name` varchar(100) DEFAULT NULL, `body` text NOT NULL, `created_at` timestamp DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (`id`), KEY `idx_note_event` (`event_id`), KEY `idx_note_task` (`task_id`)) $T");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `guests` (`id` int(11) NOT NULL AUTO_INCREMENT, `event_id` int(11) NOT NULL, `full_name` varchar(150) NOT NULL, `phone` varchar(20) DEFAULT NULL, `organization` varchar(150) DEFAULT NULL, `category` varchar(30) DEFAULT 'عادی', `qr_token` varchar(32) NOT NULL, `checked_in_at` datetime DEFAULT NULL, `checked_in_by` varchar(100) DEFAULT NULL, `created_at` timestamp DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (`id`), UNIQUE KEY `uniq_guest_token` (`qr_token`), KEY `idx_guest_event` (`event_id`)) $T");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `sms_queue` (`id` int(11) NOT NULL AUTO_INCREMENT, `phone` varchar(20) NOT NULL, `message` text NOT NULL, `status` varchar(10) DEFAULT 'pending', `error` varchar(255) DEFAULT NULL, `attempts` int(11) DEFAULT 0, `created_at` timestamp DEFAULT CURRENT_TIMESTAMP, `sent_at` datetime DEFAULT NULL, PRIMARY KEY (`id`), KEY `idx_sms_status` (`status`)) $T");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `reminders_sent` (`kind` varchar(20) NOT NULL, `ref` varchar(60) NOT NULL, `created_at` timestamp DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (`kind`, `ref`)) $T");
+
+    try_exec($pdo, "ALTER TABLE `event_tasks` ADD COLUMN `due_at` datetime DEFAULT NULL");
+    try_exec($pdo, "ALTER TABLE `event_tasks` ADD COLUMN `due_offset_min` int(11) DEFAULT NULL");
+    try_exec($pdo, "ALTER TABLE `event_tasks` ADD INDEX `idx_tasks_due` (`due_at`, `is_done`)");
+    try_exec($pdo, "ALTER TABLE `events` ADD COLUMN `manager_id` int(11) DEFAULT NULL");
+    try_exec($pdo, "ALTER TABLE `events` ADD COLUMN `is_template` tinyint(1) NOT NULL DEFAULT 0");
+    try_exec($pdo, "ALTER TABLE `events` ADD COLUMN `portal_token` varchar(64) DEFAULT NULL");
+    try_exec($pdo, "ALTER TABLE `events` ADD COLUMN `client_approved_at` datetime DEFAULT NULL");
+    try_exec($pdo, "ALTER TABLE `events` ADD COLUMN `client_approved_name` varchar(100) DEFAULT NULL");
+    try_exec($pdo, "ALTER TABLE `events` ADD COLUMN `client_note` varchar(1000) DEFAULT NULL");
+    try_exec($pdo, "ALTER TABLE `events` ADD INDEX `idx_events_manager` (`manager_id`)");
+    try_exec($pdo, "ALTER TABLE `events` ADD UNIQUE INDEX `uniq_portal_token` (`portal_token`)");
+    try_exec($pdo, "ALTER TABLE `users` ADD COLUMN `default_fee` decimal(15,2) DEFAULT NULL");
+    try_exec($pdo, "ALTER TABLE `users` ADD COLUMN `totp_secret` varchar(64) DEFAULT NULL");
+    try_exec($pdo, "ALTER TABLE `users` ADD COLUMN `totp_enabled` tinyint(1) NOT NULL DEFAULT 0");
+    try_exec($pdo, "ALTER TABLE `users` ADD COLUMN `totp_last_step` bigint(20) DEFAULT NULL");
+    try_exec($pdo, "ALTER TABLE `users` ADD COLUMN `totp_backup` text DEFAULT NULL");
+
+    // بیعانه قبلی => اولین پرداخت ثبت‌شده
+    $pdo->exec("INSERT INTO payments (event_id, amount, paid_at, method, note, created_by)
+        SELECT id, deposit, DATE(created_at), 'بیعانه', 'منتقل‌شده از نسخه قبل', 'سیستم' FROM events
+        WHERE deposit > 0 AND id NOT IN (SELECT event_id FROM payments)");
+
+    // امتیاز پیش‌فرض ساختگی (۵ از ۱ رای) پاک می‌شود؛ امتیاز واقعی از جدول ratings محاسبه می‌شود
+    $pdo->exec('UPDATE users SET rating_score = 0, rating_count = 0');
+    $pdo->exec('UPDATE venues SET rating_score = 0, rating_count = 0');
+
+    // موعد وظایف موجود بر اساس فاز
+    $tasks = $pdo->query('SELECT t.id, t.timing_tag, e.start_date, e.end_date FROM event_tasks t JOIN events e ON e.id = t.event_id WHERE t.due_at IS NULL')->fetchAll();
+    $upd = $pdo->prepare('UPDATE event_tasks SET due_offset_min = ?, due_at = ? WHERE id = ?');
+    foreach ($tasks as $t) {
+        $off = default_due_offset((string)$t['timing_tag'], $t['start_date'], $t['end_date']);
+        if ($off === null) continue;
+        $upd->execute([$off, $t['start_date'] ? date('Y-m-d H:i:s', strtotime($t['start_date']) + $off * 60) : null, $t['id']]);
+    }
+}
+
+/** موعد پیش‌فرض (دقیقه نسبت به شروع) بر اساس فاز */
+function default_due_offset(string $timing, ?string $start, ?string $end): ?int
+{
+    if (!array_key_exists($timing, TIMING_DEFAULT_OFFSET)) return null;
+    $v = TIMING_DEFAULT_OFFSET[$timing];
+    $len = ($start && $end) ? max(0, (int)((strtotime($end) - strtotime($start)) / 60)) : 8 * 60;
+    if ($v === null) return $len;
+    if ($v === 'end+3d') return $len + 3 * 1440;
+    return (int)$v;
 }

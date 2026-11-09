@@ -9,7 +9,7 @@ const normalizeTask = (t) => {
     let role = t.role || '';
     let dep = t.dep || '';
     if (role.includes('|dep:')) { const parts = role.split('|dep:'); role = parts[0]; if (!dep) dep = parts[1] || ''; }
-    return { title: t.title || '', role: role || 'عمومی', timing: t.timing || TIMINGS[0], dep };
+    return { title: t.title || '', role: role || 'عمومی', timing: t.timing || TIMINGS[0], dep, due: t.due ?? null };
 };
 const normalizePackages = (raw) => (Array.isArray(raw) ? raw : []).map((p) => ({ name: p.name || '', price: p.price ?? '', tasks: (Array.isArray(p.tasks) ? p.tasks : []).map(normalizeTask) }));
 
@@ -26,9 +26,12 @@ export default function ServiceForm({ onSave, categories, editItem }) {
     const [taskRole, setTaskRole] = useState('');
     const [taskTiming, setTaskTiming] = useState(TIMINGS[0]);
     const [dependsOn, setDependsOn] = useState('');
+    // موعد نسبت به شروع رویداد: تعداد روز + جهت (خالی = پیش‌فرض فاز)
+    const [dueDays, setDueDays] = useState('');
+    const [dueDir, setDueDir] = useState('before');
     const [editingTask, setEditingTask] = useState(null); // اندیس تسک در حال ویرایش
 
-    const resetTaskBuilder = () => { setTaskTitle(''); setTaskRole(''); setTaskTiming(TIMINGS[0]); setDependsOn(''); setEditingTask(null); };
+    const resetTaskBuilder = () => { setTaskTitle(''); setTaskRole(''); setTaskTiming(TIMINGS[0]); setDependsOn(''); setDueDays(''); setDueDir('before'); setEditingTask(null); };
     const resetPkgBuilder = () => { setPkgName(''); setPkgPrice(''); setPkgTasks([]); setEditingPkg(null); resetTaskBuilder(); };
 
     useEffect(() => {
@@ -44,7 +47,8 @@ export default function ServiceForm({ onSave, categories, editItem }) {
         const title = taskTitle.trim();
         if(!title) return toast("عنوان کار الزامی است.", "warning");
         if(pkgTasks.some((t, i) => t.title === title && i !== editingTask)) return toast("عنوان تسک در این پکیج تکراری است.", "warning");
-        const task = { title, role: taskRole.trim() || 'عمومی', timing: taskTiming, dep: dependsOn };
+        const due = dueDays === '' ? null : (dueDir === 'before' ? -1 : 1) * Math.round(Number(dueDays) * 1440);
+        const task = { title, role: taskRole.trim() || 'عمومی', timing: taskTiming, dep: dependsOn, due };
         if(editingTask !== null) {
             const oldTitle = pkgTasks[editingTask].title;
             setPkgTasks(pkgTasks.map((t, i) => i === editingTask ? task : (t.dep === oldTitle ? { ...t, dep: title } : t)));
@@ -55,7 +59,7 @@ export default function ServiceForm({ onSave, categories, editItem }) {
     };
     const editTask = (index) => {
         const t = pkgTasks[index];
-        setTaskTitle(t.title); setTaskRole(t.role); setTaskTiming(t.timing || TIMINGS[0]); setDependsOn(t.dep || ''); setEditingTask(index);
+        setTaskTitle(t.title); setTaskRole(t.role); setTaskTiming(t.timing || TIMINGS[0]); setDependsOn(t.dep || ''); setDueDays(t.due == null ? '' : String(Math.abs(t.due) / 1440)); setDueDir(t.due != null && t.due > 0 ? 'after' : 'before'); setEditingTask(index);
     };
     const removeTask = (index) => {
         const removed = pkgTasks[index].title;
@@ -128,6 +132,7 @@ export default function ServiceForm({ onSave, categories, editItem }) {
                                 <div className="flex flex-col">
                                     <span className="font-bold text-slate-700 dark:text-slate-200 leading-relaxed text-[13px] break-words">{toPersianNum(t.title)}</span>
                                     {t.dep && <span className="text-[10px] text-amber-600 mt-1">🔗 نیازمند: {toPersianNum(t.dep)}</span>}
+                                    {t.due != null && <span className="text-[10px] text-violet-700 dark:text-violet-300 mt-1">⏱ موعد: {t.due === 0 ? 'هم‌زمان با شروع' : `${toPersianNum(+(Math.abs(t.due) / 1440).toFixed(1))} روز ${t.due < 0 ? 'قبل' : 'بعد'} از شروع`}</span>}
                                 </div>
                                 <div className="flex flex-wrap items-center gap-1.5 shrink-0">
                                     {t.timing && <span className="text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-slate-700 px-2 py-1 rounded-md border border-amber-200 dark:border-white/10 font-bold whitespace-nowrap text-[10px] inline-flex items-center gap-1"><Icons.Clock/> {t.timing}</span>}
@@ -146,6 +151,14 @@ export default function ServiceForm({ onSave, categories, editItem }) {
                             <input aria-label="نقش (@تکنسین)" type="text" placeholder="نقش (@تکنسین)" value={taskRole} onChange={(e) => setTaskRole(e.target.value)} className="w-full border dark:border-white/10 p-2.5 rounded-lg text-sm outline-none focus:border-indigo-400 dark:text-white" />
                             <select value={taskTiming} onChange={(e) => setTaskTiming(e.target.value)} className="glass-field w-full border p-2.5 rounded-lg text-sm outline-none focus:border-indigo-400 dark:text-white font-semibold">
                                 {TIMINGS.map(tm => <option key={tm} value={tm}>{tm}</option>)}
+                            </select>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+                            <span>موعد انجام:</span>
+                            <NumInput decimal aria-label="تعداد روز تا موعد" value={dueDays} onChange={setDueDays} placeholder="پیش‌فرض فاز" className="w-28 glass-field border p-2 rounded-lg text-sm" dir="ltr" />
+                            <span>روز</span>
+                            <select aria-label="قبل یا بعد از شروع" value={dueDir} onChange={e => setDueDir(e.target.value)} className="glass-field border p-2 rounded-lg text-sm">
+                                <option value="before">قبل از شروع رویداد</option><option value="after">بعد از شروع رویداد</option>
                             </select>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2">

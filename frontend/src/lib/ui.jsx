@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NumInput } from '../components/NumInput';
+import JalaliDatePicker from '../components/JalaliDatePicker';
 
 // ---------------------------------------------------------------
 // سیستم پیام (Toast)، پنجره تایید و فرم ورودی، و نوار پیشرفت سراسری
@@ -64,10 +65,10 @@ function Dialog({ d }) {
     e && e.preventDefault();
     if (d.kind === 'confirm') return d.resolve(true);
     for (const f of d.fields) {
-      if (f.required && !String(values[f.name] ?? '').trim()) { setError(`«${f.label}» الزامی است.`); return; }
+      if (f.required && f.type !== 'checkbox' && !String(values[f.name] ?? '').trim()) { setError(`«${f.label}» الزامی است.`); return; }
     }
     const out = {};
-    d.fields.forEach((f) => { out[f.name] = typeof values[f.name] === 'string' && f.type !== 'money' && f.type !== 'number' ? values[f.name].trim() : values[f.name]; });
+    d.fields.forEach((f) => { out[f.name] = typeof values[f.name] === 'string' && !['money', 'number', 'datetime', 'date'].includes(f.type) ? values[f.name].trim() : (f.type === 'date' && values[f.name] ? String(values[f.name]).slice(0, 10) : values[f.name]); });
     d.resolve(out);
   };
   const cancel = () => d.resolve(d.kind === 'confirm' ? false : null);
@@ -83,7 +84,11 @@ function Dialog({ d }) {
             {d.fields.map((f, i) => (
               <label key={f.name} className="block">
                 <span className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">{f.label}{f.required && <span className="text-red-500"> *</span>}</span>
-                {f.type === 'textarea' ? (
+                {f.type === 'datetime' || f.type === 'date' ? (
+                  <JalaliDatePicker dateOnly={f.type === 'date'} clearable={!f.required} value={values[f.name]} onChange={(v) => setValues((cur) => ({ ...cur, [f.name]: v }))} />
+                ) : f.type === 'checkbox' ? (
+                  <span className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!values[f.name]} onChange={(e) => setValues({ ...values, [f.name]: e.target.checked })} className="w-5 h-5 accent-violet-600" /> {f.hint}</span>
+                ) : f.type === 'textarea' ? (
                   <textarea aria-label={f.placeholder} ref={i === 0 ? firstRef : null} rows={3} value={values[f.name]} placeholder={f.placeholder} onChange={(e) => setValues({ ...values, [f.name]: e.target.value })} className={inputCls} />
                 ) : f.type === 'select' ? (
                   <select ref={i === 0 ? firstRef : null} value={values[f.name]} onChange={(e) => setValues({ ...values, [f.name]: e.target.value })} className={inputCls}>
@@ -92,7 +97,7 @@ function Dialog({ d }) {
                 ) : f.type === 'money' || f.type === 'number' ? (
                   <NumInput inputRef={i === 0 ? firstRef : null} money={f.type === 'money'} value={values[f.name]} placeholder={f.placeholder} onChange={(v) => setValues({ ...values, [f.name]: v })} className={inputCls} dir="ltr" />
                 ) : (
-                  <input aria-label={f.placeholder} ref={i === 0 ? firstRef : null} type="text" value={values[f.name]} placeholder={f.placeholder} onChange={(e) => setValues({ ...values, [f.name]: e.target.value })} className={inputCls} />
+                  <input aria-label={f.placeholder} ref={i === 0 ? firstRef : null} type={f.type === 'password' ? 'password' : 'text'} autoComplete={f.type === 'password' ? 'current-password' : undefined} value={values[f.name]} placeholder={f.placeholder} onChange={(e) => setValues({ ...values, [f.name]: e.target.value })} className={inputCls} />
                 )}
               </label>
             ))}
@@ -110,9 +115,21 @@ function Dialog({ d }) {
 
 export function UIHost() {
   const [s, setS] = useState(state);
+  const [online, setOnline] = useState(navigator.onLine);
   useEffect(() => { listeners.add(setS); return () => listeners.delete(setS); }, []);
+  useEffect(() => {
+    const on = () => { setOnline(true); toast('اتصال اینترنت برقرار شد.', 'success'); };
+    const off = () => setOnline(false);
+    window.addEventListener('online', on); window.addEventListener('offline', off);
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
+  }, []);
   return (
     <>
+      {!online && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[460] glass-ink rounded-full px-4 py-2 text-xs font-semibold shadow-lg" role="status">
+          ⚠ آفلاین هستید — آخرین اطلاعات ذخیره‌شده نمایش داده می‌شود و تغییرات تا اتصال مجدد ارسال نمی‌شوند.
+        </div>
+      )}
       {/* نوار پیشرفت سراسری هنگام ذخیره */}
       <div className={`fixed top-0 inset-x-0 h-1 z-[500] pointer-events-none transition-opacity ${s.busy ? 'opacity-100' : 'opacity-0'}`} aria-hidden="true">
         <div className="h-full bg-indigo-400 busy-bar" />

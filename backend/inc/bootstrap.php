@@ -4,6 +4,21 @@ declare(strict_types=1);
 if (!defined('EVENT_APP')) { http_response_code(403); exit; }
 
 const ADMIN_ROLES = ['superadmin', 'admin'];
+// نقش‌های قابل تعریف از پنل: کارمند، مدیر پروژه (فقط رویدادهای خودش)، حسابدار (فقط بخش مالی)
+const USER_ROLES = ['staff' => 'کارمند', 'manager' => 'مدیر پروژه', 'accountant' => 'حسابدار'];
+const OFFICE_ROLES = ['superadmin', 'admin', 'manager', 'accountant'];
+// نقش‌هایی که می‌توانند متصدی وظیفه شوند
+const ASSIGNABLE_ROLES = ['staff', 'manager'];
+// موعد پیش‌فرض هر فاز نسبت به شروع رویداد (دقیقه)
+const TIMING_DEFAULT_OFFSET = [
+    'پیش‌تولید' => -3 * 1440,
+    'روز قبل از رویداد' => -1 * 1440,
+    'روز رویداد' => 0,
+    'پایان رویداد' => null,   // پایان رویداد
+    'پس‌تولید' => 'end+3d',   // سه روز پس از پایان
+];
+const GUEST_CATEGORIES = ['عادی', 'VIP', 'سخنران', 'رسانه', 'میهمان ویژه', 'عوامل'];
+const PAYMENT_METHODS = ['نقدی', 'کارت به کارت', 'واریز بانکی', 'چک', 'بیعانه', 'سایر'];
 const TIMINGS = ['پیش‌تولید', 'روز قبل از رویداد', 'روز رویداد', 'پایان رویداد', 'پس‌تولید'];
 const MASTER_TABLES = ['staff' => 'users', 'category' => 'categories', 'org' => 'organizations', 'venue' => 'venues', 'service' => 'services'];
 const EVENT_STATUSES = [
@@ -132,15 +147,27 @@ function storage_dir(string $sub): string
     $bases = [];
     $cfg = app_config();
     if (!empty($cfg['storage_dir'])) $bases[] = rtrim((string)$cfg['storage_dir'], '/\\');
-    $docroot = @realpath((string)($_SERVER['DOCUMENT_ROOT'] ?? ''));
+    // توجه: realpath('') مسیر جاری را برمی‌گرداند؛ در خط فرمان DOCUMENT_ROOT خالی است
+    $dr = PHP_SAPI === 'cli' ? '' : (string)($_SERVER['DOCUMENT_ROOT'] ?? '');
+    $docroot = $dr !== '' ? @realpath($dr) : false;
     if ($docroot && dirname($docroot) !== $docroot) {
         $bases[] = dirname($docroot) . '/event-master-data-' . substr(md5(dirname(__DIR__)), 0, 8);
+    } elseif (PHP_SAPI === 'cli') {
+        // cron از خط فرمان: همان مسیری که وب‌سایت انتخاب کرده است
+        try { $saved = (string)(q_val("SELECT v FROM settings WHERE k = 'storage_base'") ?? ''); } catch (Throwable $e) { $saved = ''; }
+        if ($saved !== '') $bases[] = $saved;
     }
     foreach ($bases as $base) {
         $dir = $base . '/' . $sub;
         if ($docroot && strpos((string)@realpath($base) ?: $base, $docroot . DIRECTORY_SEPARATOR) === 0) continue; // داخل وب‌روت نباشد
         if (!@is_dir($dir)) @mkdir($dir, 0700, true);
-        if (@is_dir($dir) && @is_writable($dir)) return $cache[$sub] = $dir;
+        if (@is_dir($dir) && @is_writable($dir)) {
+            if (PHP_SAPI !== 'cli' && empty($cache['__saved'])) {
+                $cache['__saved'] = true;
+                try { q("INSERT INTO settings (k, v) VALUES ('storage_base', ?) ON DUPLICATE KEY UPDATE v = VALUES(v)", [$base]); } catch (Throwable $e) { /* پیش از مهاجرت */ }
+            }
+            return $cache[$sub] = $dir;
+        }
     }
     $dir = __DIR__ . '/' . $sub;
     if (!is_dir($dir)) @mkdir($dir, 0700, true);
@@ -204,7 +231,7 @@ function current_user(): ?array
     $cached = null;
     $uid = (int)($_SESSION['uid'] ?? 0);
     if ($uid > 0) {
-        $u = q_one('SELECT id, username, full_name, role, avatar, can_delegate, theme_pref, is_shadow, must_change_password, session_version FROM users WHERE id = ?', [$uid]);
+        $u = q_one('SELECT id, username, full_name, role, avatar, can_delegate, theme_pref, is_shadow, must_change_password, session_version, totp_enabled FROM users WHERE id = ?', [$uid]);
         // تغییر رمز (توسط خود کاربر یا مدیر) همه نشست‌های قبلی را باطل می‌کند
         if ($u && (int)$u['is_shadow'] === 0 && (int)($_SESSION['sv'] ?? -1) === (int)$u['session_version']) {
             $cached = public_user($u);
@@ -223,17 +250,79 @@ function forget_current_user(): void
 
 function public_user(array $u): array
 {
+    $role = (string)$u['role'];
     return [
         'id' => (int)$u['id'],
         'username' => $u['username'],
         'full_name' => $u['full_name'],
-        'role' => $u['role'],
+        'role' => $role,
         'avatar' => $u['avatar'],
         'can_delegate' => (int)$u['can_delegate'],
         'theme_pref' => $u['theme_pref'] === 'dark' ? 'dark' : 'light',
-        'is_admin' => is_admin_role($u['role']),
+        'is_admin' => is_admin_role($role),
+        'is_office' => in_array($role, OFFICE_ROLES, true),
+        'perms' => role_perms($role),
         'must_change_password' => (int)($u['must_change_password'] ?? 0) === 1,
+        'totp_enabled' => (int)($u['totp_enabled'] ?? 0) === 1,
+        'must_setup_2fa' => twofa_required_for($role) && (int)($u['totp_enabled'] ?? 0) !== 1,
+        'twofa_mode' => twofa_mode(),
     ];
+}
+
+/** مجوزهای کلی هر نقش (محدودیت سطح رویداد جداگانه در event_access بررسی می‌شود) */
+function role_perms(string $role): array
+{
+    $admin = is_admin_role($role);
+    $mgr = $role === 'manager';
+    $acc = $role === 'accountant';
+    return [
+        'master' => $admin,                     // ویرایش اطلاعات پایه
+        'settings' => $admin,                   // تنظیمات، پشتیبان‌گیری، پیامک
+        'events' => $admin || $mgr || $acc,     // دیدن رویدادها
+        'all_events' => $admin || $acc,         // همه رویدادها (مدیر پروژه فقط رویدادهای خودش)
+        'create_event' => $admin || $mgr,
+        'tasks' => $admin || $mgr,              // مدیریت وظایف، تیم، مهمانان، پیوست‌ها
+        'finance' => $admin || $mgr || $acc,    // فاکتور، پرداخت‌ها، هزینه نیروها
+        'reports' => $admin || $mgr || $acc,
+        'payouts' => $admin || $acc,
+    ];
+}
+
+function is_office_role(?string $role): bool
+{
+    return in_array($role, OFFICE_ROLES, true);
+}
+
+// ---------------------------------------------------------------
+// تنظیمات قابل ویرایش از پنل مدیر (جدول settings)
+// ---------------------------------------------------------------
+function get_setting(string $key, $default = null)
+{
+    static $cache = null;
+    if ($cache === null) {
+        $cache = [];
+        try { foreach (q_all('SELECT k, v FROM settings') as $r) $cache[$r['k']] = $r['v']; } catch (Throwable $e) { /* پیش از مهاجرت */ }
+    }
+    if (func_num_args() === 3) { $cache = null; return null; } // پاک کردن کش
+    return array_key_exists($key, $cache) ? $cache[$key] : $default;
+}
+
+function set_setting(string $key, ?string $value): void
+{
+    q('INSERT INTO settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)', [$key, (string)$value]);
+    get_setting($key, null, true);
+}
+
+/** حالت ورود دومرحله‌ای: off | optional | required_office */
+function twofa_mode(): string
+{
+    $m = (string)get_setting('twofa_mode', 'off');
+    return in_array($m, ['off', 'optional', 'required_office'], true) ? $m : 'off';
+}
+
+function twofa_required_for(string $role): bool
+{
+    return twofa_mode() === 'required_office' && is_office_role($role);
 }
 
 // ---------------------------------------------------------------

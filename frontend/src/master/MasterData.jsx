@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../lib/api';
-import { toPersianNum, isOn, matches, safeJson } from '../lib/utils';
+import { toPersianNum, isOn, matches, safeJson, ROLE_LABELS } from '../lib/utils';
+import { RatingBadge } from '../components/Stars';
 import { toast, confirmDialog } from '../lib/ui';
 import { Icons } from '../components/Icons';
 import SortControls from '../components/SortControls';
@@ -14,7 +15,7 @@ export const MASTER_TABS = [
     { id: 'services', label: 'خدمات', type: 'service', noun: 'سرویس' },
     { id: 'venues', label: 'مکان‌ها', type: 'venue', noun: 'مکان' },
     { id: 'orgs', label: 'سازمان‌ها', type: 'org', noun: 'سازمان' },
-    { id: 'staff', label: 'همکاران', type: 'staff', noun: 'همکار' },
+    { id: 'staff', label: 'کاربران و همکاران', type: 'staff', noun: 'کاربر' },
 ];
 const isDesktop = () => window.matchMedia('(min-width: 1024px)').matches;
 
@@ -196,6 +197,8 @@ export default function MasterData({ md, reload, tab = 'categories', onTabChange
                                             <div className="font-semibold text-slate-800 dark:text-slate-100 truncate">
                                                 {toPersianNum(name)}
                                                 {isOn(item.is_shadow) && <span className="text-xs font-normal bg-slate-200 dark:bg-slate-700 px-2 rounded-full text-slate-600 dark:text-slate-300 mr-1.5">تلفنی</span>}
+                                                {tab === 'staff' && item.role && item.role !== 'staff' && <span className="text-xs font-normal bg-grad text-white px-2 rounded-full mr-1.5">{ROLE_LABELS[item.role]}</span>}
+                                                {(tab === 'staff' || tab === 'venues') && <span className="mr-1.5"><RatingBadge score={item.rating_score} count={item.rating_count} /></span>}
                                                 {isOn(item.can_delegate) && <span className="text-xs font-normal text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/50 px-2 rounded border border-blue-200 dark:border-blue-800 mr-1.5">مجوز واگذاری</span>}
                                             </div>
                                             {sub && <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate" dir="auto">{toPersianNum(sub)}</div>}

@@ -2,14 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { toPersianNum, isOn, safeJson } from '../lib/utils';
 import ImageUploader from '../components/ImageUploader';
 import SkillInput from '../components/SkillInput';
-import { toast } from '../lib/ui';
+import { toast, confirmDialog } from '../lib/ui';
+import { api } from '../lib/api';
+import { NumInput } from '../components/NumInput';
 
 export default function StaffForm({ onSave, editItem, mdStaff }) {
     const [form, setForm] = useState({ full_name: '', username: '', password: '', phone: '', phone2: '', is_shadow: false, can_delegate: false, iban: '', skillInput: '', skills: [], avatar: '' });
-    const empty = { full_name: '', username: '', password: '', phone: '', phone2: '', is_shadow: false, can_delegate: false, iban: '', skillInput: '', skills: [], avatar: '' };
+    const empty = { full_name: '', username: '', password: '', phone: '', phone2: '', is_shadow: false, can_delegate: false, iban: '', skillInput: '', skills: [], avatar: '', role: 'staff', default_fee: '' };
     useEffect(() => {
         if(editItem) {
-            setForm({ ...empty, full_name: editItem.full_name || '', username: editItem.username || '', phone: editItem.phone || '', phone2: editItem.phone2 || '', iban: editItem.iban || '', avatar: editItem.avatar || '', is_shadow: isOn(editItem.is_shadow), can_delegate: isOn(editItem.can_delegate), skills: safeJson(editItem.skills, []) });
+            setForm({ ...empty, full_name: editItem.full_name || '', username: editItem.username || '', phone: editItem.phone || '', phone2: editItem.phone2 || '', iban: editItem.iban || '', avatar: editItem.avatar || '', is_shadow: isOn(editItem.is_shadow), can_delegate: isOn(editItem.can_delegate), skills: safeJson(editItem.skills, []), role: editItem.role || 'staff', default_fee: editItem.default_fee != null ? String(Math.trunc(Number(editItem.default_fee))) : '' });
         } else setForm(empty);
     }, [editItem]);
     const addSkill = () => { const v = form.skillInput.trim(); if(!v) return; setForm({...form, skills: form.skills.includes(v) ? form.skills : [...form.skills, v], skillInput: ''}); };
@@ -28,6 +30,24 @@ export default function StaffForm({ onSave, editItem, mdStaff }) {
     };
     return (
         <div className="space-y-4 fade-in">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block text-sm text-slate-700 dark:text-slate-300">نقش کاربر
+                    <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value, ...(e.target.value !== 'staff' ? { is_shadow: false } : {}) })} className="mt-1 w-full glass-field border-2 p-3 rounded-xl font-semibold">
+                        <option value="staff">کارمند (فقط وظایف خودش)</option>
+                        <option value="manager">مدیر پروژه (رویدادهای سپرده‌شده)</option>
+                        <option value="accountant">حسابدار (بخش مالی همه رویدادها)</option>
+                    </select>
+                </label>
+                <label className="block text-sm text-slate-700 dark:text-slate-300">دستمزد پیش‌فرض هر رویداد (تومان)
+                    <NumInput money value={form.default_fee} onChange={v => setForm({ ...form, default_fee: v })} placeholder="اختیاری" className="mt-1 w-full glass-field border-2 p-3 rounded-xl" dir="ltr" />
+                </label>
+            </div>
+            {editItem && isOn(editItem.totp_enabled) && (
+                <div className="glass-soft border rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <span className="text-emerald-700 dark:text-emerald-400">✓ ورود دومرحله‌ای فعال است</span>
+                    <button type="button" onClick={async () => { if (await confirmDialog({ title: 'بازنشانی ورود دومرحله‌ای', message: `اگر «${editItem.full_name}» گوشی‌اش را گم کرده، ورود دومرحله‌ای او غیرفعال می‌شود و باید دوباره فعال کند.`, confirmText: 'بازنشانی', danger: true }) && await api('twofa_reset_user', { user_id: editItem.id })) toast('ورود دومرحله‌ای کاربر بازنشانی شد.'); }} className="text-red-600 font-semibold">بازنشانی</button>
+                </div>
+            )}
             <ImageUploader value={form.avatar} onChange={(b64)=>setForm({...form, avatar: b64})} type="avatar" placeholder="عکس پروفایل" />
             <input aria-label="نام و نام خانوادگی" type="text" placeholder="نام و نام خانوادگی *" value={form.full_name} onChange={(e) => setForm({...form, full_name: e.target.value})} className="w-full border-2 dark:border-white/10 p-3 rounded-xl outline-none focus:border-indigo-500 font-bold dark:text-white" />
             <div className="grid grid-cols-2 gap-4">

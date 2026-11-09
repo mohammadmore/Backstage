@@ -11,6 +11,14 @@ import EventCreate from './events/EventCreate';
 import MasterData, { MASTER_TABS } from './master/MasterData';
 import ChangePassword from './components/ChangePassword';
 import NotificationPanel from './components/NotificationPanel';
+import SecurityModal from './components/SecurityModal';
+import CalendarPage from './pages/CalendarPage';
+import ReportsPage from './pages/ReportsPage';
+import SettingsPage from './pages/SettingsPage';
+import PortalPage from './pages/PortalPage';
+import CheckinPage from './pages/CheckinPage';
+
+const OFFICE_SECTIONS = ['events', 'calendar', 'reports', 'master', 'settings', 'checkin'];
 
 const inputCls = 'glass-soft w-full border-2 p-3.5 rounded-2xl text-center font-semibold focus:border-indigo-500 dark:text-white';
 
@@ -41,6 +49,8 @@ export default function App() {
     const [showPwd, setShowPwd] = useState(false);
     const [sessionExpired, setSessionExpired] = useState(false);
     const [wizardOpen, setWizardOpen] = useState(false);
+    const [twofaStep, setTwofaStep] = useState(false);
+    const [showSecurity, setShowSecurity] = useState(false);
     const wizardGuard = useRef(null);
     const userRef = useRef(null);
     userRef.current = user;
@@ -51,7 +61,9 @@ export default function App() {
         api('me', null, {}, { silent: false }).then(res => { if (res && res.user) setUser(res.user); setBooting(false); });
     }, []);
 
-    const isAdmin = !!(user && user.is_admin);
+    // «مدیر» در این فایل یعنی هر کاربر دفتری (مدیر کل، مدیر پروژه، حسابدار)؛ جزئیات دسترسی در perms
+    const isAdmin = !!(user && user.is_office);
+    const perms = (user && user.perms) || {};
     const loadMd = () => api('get_master_data').then((res) => { if (res) setMd(res); });
     const fetchNotifs = async () => { const res = await api('get_notifications', null, {}, { silent: true }); if (res) setNotifs(res); };
 
@@ -65,25 +77,26 @@ export default function App() {
         if (!user) return;
         const t = user.theme_pref === 'dark' ? 'dark' : 'light';
         setTheme(t); applyTheme(t);
-        if (user.is_admin && !user.must_change_password) {
+        if (user.is_office && !user.must_change_password && !user.must_setup_2fa) {
             loadMd(); fetchNotifs();
             const i = setInterval(() => { if (!document.hidden) fetchNotifs(); }, 15000);
             return () => clearInterval(i);
         }
-    }, [user && user.id, user && user.must_change_password]);
+    }, [user && user.id, user && user.must_change_password, user && user.must_setup_2fa]);
 
     // ---------- مسیرها (فقط مدیر) ----------
     const [section, sub, sub2] = route.parts;
     useEffect(() => {
-        if (!isAdmin || user.must_change_password) return;
-        if (section !== 'events' && section !== 'master') navigate('events', { replace: true });
+        if (!isAdmin || user.must_change_password || section === 'portal') return;
+        const allowed = OFFICE_SECTIONS.filter(x => (x !== 'master' || perms.master) && (x !== 'settings' || perms.settings));
+        if (!allowed.includes(section)) navigate('events', { replace: true });
     }, [isAdmin, section, user && user.must_change_password]);
 
     // ویزارد با مسیر #/events/new باز می‌شود؛ خروج با دکمه بازگشت مرورگر هم نیاز به تایید دارد
     useEffect(() => {
         if (!isAdmin) return;
         const wantsWizard = section === 'events' && sub === 'new';
-        if (wantsWizard && !wizardOpen) { loadMd(); setWizardOpen(true); return; }
+        if (wantsWizard && !wizardOpen) { if (!perms.create_event) { navigate('events', { replace: true }); return; } loadMd(); setWizardOpen(true); return; }
         if (!wantsWizard && wizardOpen) {
             const dirty = wizardGuard.current && wizardGuard.current();
             if (!dirty) { setWizardOpen(false); return; }
@@ -96,7 +109,8 @@ export default function App() {
 
     const logout = async () => {
         await api('logout', {}, {}, { silent: true });
-        setUser(null); setMd({}); setNotifs([]); setShowPwd(false); setWizardOpen(false); setSessionExpired(false);
+        setUser(null); setMd({}); setNotifs([]); setShowPwd(false); setWizardOpen(false); setSessionExpired(false); setTwofaStep(false); setShowSecurity(false);
+        try { navigator.serviceWorker?.controller?.postMessage('clear-api-cache'); } catch (e) { /* */ }
         window.history.replaceState(null, '', window.location.pathname);
     };
 
@@ -118,6 +132,19 @@ export default function App() {
         const res = await api('login', { username, password });
         setLoggingIn(false);
         if (!res || !res.success) return;
+        if (res.twofa_required) { setTwofaStep(true); return; }
+        finishLogin(res);
+    };
+    const login2fa = async (e) => {
+        e.preventDefault();
+        const code = e.target.code.value.trim();
+        if (!code) return;
+        setLoggingIn(true);
+        const res = await api('login_2fa', { code });
+        setLoggingIn(false);
+        if (res && res.success) { setTwofaStep(false); finishLogin(res); }
+    };
+    const finishLogin = (res) => {
         if (sessionExpired) {
             setSessionExpired(false);
             if (user && res.user.id !== user.id) { window.location.reload(); return; }
@@ -125,6 +152,9 @@ export default function App() {
         }
         setUser(res.user);
     };
+
+    // پورتال کارفرما بدون نیاز به ورود
+    if (section === 'portal' && sub) return <PortalPage token={sub} />;
 
     if (booting) return <div className="p-10 text-center"><h2 className="text-indigo-600 dark:text-indigo-400 text-xl font-bold pulse-text">در حال راه‌اندازی سیستم...</h2></div>;
 
@@ -136,16 +166,26 @@ export default function App() {
             <main className="glass grad-top p-8 sm:p-10 rounded-[2rem] w-full max-w-md text-center fade-in border">
                 <div className="w-16 h-16 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center mx-auto mb-4 bg-grad-soft"><Icons.Tent /></div>
                 <h1 className="text-3xl font-bold mb-7 text-grad">ای‌ونت مستر</h1>
-                <LoginForm onSubmit={login} busy={loggingIn} />
+                {twofaStep ? (
+                    <form onSubmit={login2fa} className="space-y-3">
+                        <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">کد ۶ رقمی برنامه احراز هویت گوشی (یا یکی از کدهای پشتیبان) را وارد کنید.</p>
+                        <label className="sr-only" htmlFor="code-2fa">کد ورود دومرحله‌ای</label>
+                        <input id="code-2fa" name="code" autoFocus inputMode="numeric" autoComplete="one-time-code" maxLength={12} className={`${inputCls} text-2xl tracking-[0.4em]`} dir="ltr" />
+                        <button type="submit" disabled={loggingIn} className="w-full btn-grad p-3.5 rounded-2xl font-bold text-lg disabled:opacity-60">تایید</button>
+                        <button type="button" onClick={() => setTwofaStep(false)} className="w-full text-sm text-slate-500 font-semibold py-2">بازگشت</button>
+                    </form>
+                ) : <LoginForm onSubmit={login} busy={loggingIn} />}
             </main>
         </div>
     );
 
     // رمز ضعیف یا موقت => تا تغییر رمز، دسترسی دیگری وجود ندارد (سرور هم همین را اعمال می‌کند)
     if (user.must_change_password) return <ChangePassword forced user={user} onDone={(u) => u && setUser(u)} onLogout={logout} />;
+    if (user.must_setup_2fa) return <SecurityModal forced user={user} onDone={(u) => u && setUser(u)} onClose={() => {}} onLogout={logout} />;
 
     const overlays = (
         <>
+            {showSecurity && <SecurityModal user={user} onDone={(u) => u && setUser(u)} onClose={() => setShowSecurity(false)} />}
             {showPwd && <ChangePassword user={user} onDone={(u) => { setShowPwd(false); if (u) setUser(u); }} onCancel={() => setShowPwd(false)} />}
             {sessionExpired && (
                 <div className="fixed inset-0 z-[380] glass-overlay flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="relogin-title">
@@ -160,10 +200,20 @@ export default function App() {
         </>
     );
 
-    if (!isAdmin) return <>{overlays}<StaffDashboard user={user} onLogout={logout} onChangePassword={() => setShowPwd(true)} theme={theme} onToggleTheme={toggleTheme} /></>;
+    if (!isAdmin) {
+        if (section === 'checkin' && sub) return <>{overlays}<div className="p-4"><CheckinPage eventId={Number(sub)} onBack={() => navigate('my')} /></div></>;
+        return <>{overlays}<StaffDashboard user={user} onLogout={logout} onChangePassword={() => setShowPwd(true)} onSecurity={user.twofa_mode !== 'off' ? () => setShowSecurity(true) : null} theme={theme} onToggleTheme={toggleTheme} /></>;
+    }
 
     // ---------- پنل مدیر ----------
-    const view = section === 'master' ? 'MASTER' : 'EVENTS';
+    const view = { master: 'MASTER', calendar: 'CALENDAR', reports: 'REPORTS', settings: 'SETTINGS', checkin: 'CHECKIN' }[section] || 'EVENTS';
+    const navItems = [
+        { href: '#/events', v: 'EVENTS', label: 'رویدادها', show: true },
+        { href: '#/calendar', v: 'CALENDAR', label: 'تقویم', show: true },
+        { href: '#/reports', v: 'REPORTS', label: 'گزارش‌ها', show: perms.reports },
+        { href: `#/master/${MASTER_TABS.some(t => t.id === sub) ? sub : 'categories'}`, v: 'MASTER', label: 'دیتابیس‌ها', show: perms.master },
+        { href: '#/settings', v: 'SETTINGS', label: 'تنظیمات', show: perms.settings },
+    ].filter(n => n.show);
     const detailId = section === 'events' && sub && /^\d+$/.test(sub) ? Number(sub) : null;
     const detailTab = DETAIL_TABS.some(t => t.id === sub2) ? sub2 : 'operations';
     const masterTab = MASTER_TABS.some(t => t.id === sub) ? sub : 'categories';
@@ -182,13 +232,13 @@ export default function App() {
                 <div className="flex items-center gap-5">
                     <a href="#/events" className="font-bold text-lg flex items-center gap-2" aria-label="ای‌ونت مستر - رویدادها"><span className="text-white bg-white/20 p-1.5 rounded-lg"><Icons.Tent /></span> <span className="hidden sm:block">ای‌ونت مستر</span></a>
                     <nav className="hidden md:flex gap-1 p-1 rounded-xl bg-white/15" aria-label="بخش‌ها">
-                        <a href="#/events" aria-current={view === 'EVENTS' ? 'page' : undefined} className={navBtn(view === 'EVENTS')}>رویدادها</a>
-                        <a href={`#/master/${masterTab}`} aria-current={view === 'MASTER' ? 'page' : undefined} className={navBtn(view === 'MASTER')}>مدیریت دیتابیس‌ها</a>
+                        {navItems.map(n => <a key={n.v} href={n.href} aria-current={view === n.v ? 'page' : undefined} className={navBtn(view === n.v)}>{n.label}</a>)}
                     </nav>
                 </div>
                 <div className="flex items-center gap-1.5 sm:gap-2">
                     <NotificationPanel onRefresh={fetchNotifs} notifs={notifs} onRead={markNotifRead} onReadAll={markAllRead} onOpen={(evId) => navigate(`events/${evId}`)} renderActions={delegationActions} />
                     <button type="button" onClick={toggleTheme} className="p-2 on-nav rounded-full" aria-label={theme === 'dark' ? 'پوسته روشن' : 'پوسته تیره'} title="تغییر پوسته">{theme === 'dark' ? <Icons.Sun /> : <Icons.Moon />}</button>
+                    {user.twofa_mode !== 'off' && <button type="button" onClick={() => setShowSecurity(true)} className="p-2 on-nav rounded-full" aria-label="ورود دومرحله‌ای" title="ورود دومرحله‌ای">🛡</button>}
                     <button type="button" onClick={() => setShowPwd(true)} className="p-2 on-nav rounded-full" aria-label="تغییر رمز عبور" title="تغییر رمز عبور"><Icons.Key /></button>
                     <div className="hidden sm:flex items-center gap-2 bg-white/15 px-3 py-1.5 rounded-full border border-white/25">
                         {user.avatar ? <img src={user.avatar} className="w-7 h-7 rounded-full object-cover bg-white" alt="" /> : <span className="w-7 h-7 rounded-full flex items-center justify-center bg-white/20"><Icons.Users /></span>}
@@ -197,17 +247,20 @@ export default function App() {
                     <button type="button" onClick={logout} className="text-white font-semibold bg-white/15 border border-white/25 px-3 py-2 rounded-lg hover:bg-red-500 hover:border-red-500 text-sm">خروج</button>
                 </div>
             </header>
-            <nav className="glass-nav md:hidden flex p-2 gap-2 z-30 relative" aria-label="بخش‌ها">
-                <a href="#/events" aria-current={view === 'EVENTS' ? 'page' : undefined} className={`flex-1 text-center py-2.5 rounded-xl font-semibold text-sm ${view === 'EVENTS' ? 'bg-white text-violet-700' : 'bg-white/15 text-white'}`}>رویدادها</a>
-                <a href={`#/master/${masterTab}`} aria-current={view === 'MASTER' ? 'page' : undefined} className={`flex-1 text-center py-2.5 rounded-xl font-semibold text-sm ${view === 'MASTER' ? 'bg-white text-violet-700' : 'bg-white/15 text-white'}`}>دیتابیس‌ها</a>
+            <nav className="glass-nav md:hidden flex p-2 gap-1.5 z-30 relative overflow-x-auto" aria-label="بخش‌ها">
+                {navItems.map(n => <a key={n.v} href={n.href} aria-current={view === n.v ? 'page' : undefined} className={`flex-1 whitespace-nowrap text-center py-2.5 px-2 rounded-xl font-semibold text-sm ${view === n.v ? 'bg-white text-violet-700' : 'bg-white/15 text-white'}`}>{n.label}</a>)}
             </nav>
 
             <main className="flex-1 w-full max-w-[100rem] mx-auto relative p-4 md:p-8 pt-0 md:pt-0">
-                {view === 'EVENTS' && !detailId && <EventDashboard refreshKey={eventsKey} onOpen={(id) => navigate(`events/${id}`)} onNewEvent={() => navigate('events/new')} />}
-                {view === 'EVENTS' && detailId && <EventDetail key={detailId} eventId={detailId} md={md} tab={detailTab} onTabChange={(t) => navigate(`events/${detailId}/${t}`, { replace: true })} onBack={() => navigate('events')} />}
+                {view === 'CALENDAR' && <CalendarPage />}
+                {view === 'REPORTS' && <ReportsPage user={user} />}
+                {view === 'SETTINGS' && <SettingsPage user={user} onOpenSecurity={() => setShowSecurity(true)} />}
+                {view === 'CHECKIN' && sub && <CheckinPage eventId={Number(sub)} onBack={() => window.history.back()} />}
+                {view === 'EVENTS' && !detailId && <EventDashboard user={user} refreshKey={eventsKey} onOpen={(id) => navigate(`events/${id}`)} onNewEvent={() => navigate('events/new')} />}
+                {view === 'EVENTS' && detailId && <EventDetail key={detailId} eventId={detailId} md={md} user={user} tab={detailTab} onTabChange={(t) => navigate(`events/${detailId}/${t}`, { replace: true })} onBack={() => navigate('events')} />}
                 {view === 'MASTER' && <div className="mt-6"><MasterData md={md} reload={loadMd} tab={masterTab} onTabChange={(t) => navigate(`master/${t}`, { replace: true })} /></div>}
             </main>
-            {wizardOpen && <EventCreate md={md} registerGuard={(fn) => { wizardGuard.current = fn; }} onClose={closeWizard} onDone={() => { wizardGuard.current = null; setWizardOpen(false); setEventsKey(k => k + 1); navigate('events', { replace: true }); }} />}
+            {wizardOpen && <EventCreate md={md} user={user} registerGuard={(fn) => { wizardGuard.current = fn; }} onClose={closeWizard} onDone={() => { wizardGuard.current = null; setWizardOpen(false); setEventsKey(k => k + 1); navigate('events', { replace: true }); }} />}
             {overlays}
         </div>
     );

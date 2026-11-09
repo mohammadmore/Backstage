@@ -158,3 +158,47 @@ export const matches = (query, ...fields) => {
   const hay = normalizeSearch(fields.join(' '));
   return q.split(' ').every((w) => hay.includes(w));
 };
+
+// ---------------------------------------------------------------
+// موعد وظایف
+// ---------------------------------------------------------------
+export const isOverdue = (t) => !isOn(t.is_done) && !!t.due_at && (parseDate(t.due_at)?.getTime() ?? Infinity) < Date.now();
+
+/** متن کوتاه موعد: «امروز ۱۴:۰۰»، «فردا»، «۳ روز دیگر»، «۲ روز گذشته» */
+export const dueLabel = (due) => {
+  const d = parseDate(due);
+  if (!d) return '';
+  const now = new Date();
+  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(d) - day(now)) / 86400000);
+  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  if (diff === 0) return toPersianNum(`امروز ${hm}`);
+  if (diff === 1) return toPersianNum(`فردا ${hm}`);
+  if (diff === -1) return toPersianNum(`دیروز ${hm}`);
+  if (diff > 1 && diff <= 7) return toPersianNum(`${diff} روز دیگر`);
+  if (diff < -1 && diff >= -7) return toPersianNum(`${-diff} روز گذشته`);
+  return toJalaliDate(due);
+};
+
+// ---------------------------------------------------------------
+// وضعیت پرداخت
+// ---------------------------------------------------------------
+export const PAY_STATUS = {
+  none: { label: 'بدون مبلغ', cls: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-white/5 dark:text-slate-300 dark:border-white/10' },
+  unpaid: { label: 'پرداخت‌نشده', cls: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800' },
+  partial: { label: 'بدهکار', cls: 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800' },
+  settled: { label: 'تسویه', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800' },
+  over: { label: 'بستانکار', cls: 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-900/30 dark:text-sky-300 dark:border-sky-800' },
+};
+export const PAYMENT_METHODS = ['نقدی', 'کارت به کارت', 'واریز بانکی', 'چک', 'بیعانه', 'سایر'];
+export const ROLE_LABELS = { staff: 'کارمند', manager: 'مدیر پروژه', accountant: 'حسابدار', admin: 'مدیر کل', superadmin: 'مدیر کل' };
+
+export const fileSize = (n) => {
+  n = Number(n) || 0;
+  if (n < 1024) return toPersianNum(`${n} بایت`);
+  if (n < 1048576) return toPersianNum(`${(n / 1024).toFixed(0)} کیلوبایت`);
+  return toPersianNum(`${(n / 1048576).toFixed(1)} مگابایت`);
+};
+
+/** تبدیل تاریخ Date به YYYY-MM-DD */
+export const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

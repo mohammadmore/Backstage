@@ -31,7 +31,7 @@ const EMPTY_FORM = { title: '', event_type: '', org_id: '', contact_name: '', ve
 // =====================================
 // تعریف رویداد جدید (ویزارد پرزنت)
 // =====================================
-export default function EventCreate({ md, onDone, onClose, registerGuard }) {
+export default function EventCreate({ md, user, onDone, onClose, registerGuard }) {
     const [step, setStep] = useState(0);
     const [maxStep, setMaxStep] = useState(0);
     const [form, setForm] = useState(EMPTY_FORM);
@@ -39,6 +39,12 @@ export default function EventCreate({ md, onDone, onClose, registerGuard }) {
     const [hybridAnswers, setHybridAnswers] = useState({});
     const [showHidden, setShowHidden] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [busyVenues, setBusyVenues] = useState({});
+    // مکان‌هایی که در بازه زمانی این رویداد رزرو شده‌اند (هشدار تداخل)
+    useEffect(() => {
+        if (!form.start_date) { setBusyVenues({}); return; }
+        api('check_conflicts', null, { start_date: form.start_date, end_date: form.end_date || '' }, { silent: true }).then(r => setBusyVenues((r && r.venues_busy) || {}));
+    }, [form.start_date, form.end_date]);
 
     const dirty = JSON.stringify(form) !== JSON.stringify(EMPTY_FORM) || Object.keys(selected).length > 0 || Object.keys(hybridAnswers).length > 0;
 
@@ -124,6 +130,7 @@ export default function EventCreate({ md, onDone, onClose, registerGuard }) {
             ...form,
             title: form.title.trim(),
             org_id: form.org_id || null,
+            manager_id: form.manager_id || null,
             venue_id: form.venue_id || null,
             guest_count: form.guest_count || 0,
             selected_services: selectedLines.map(l => ({ service_id: l.svc.id, package_index: l.idx })),
@@ -176,6 +183,15 @@ export default function EventCreate({ md, onDone, onClose, registerGuard }) {
                         <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2 block">تاریخ و ساعت پایان</span>
                         <JalaliDatePicker value={form.end_date} onChange={val => setForm(f => ({ ...f, end_date: val }))} />
                     </div>
+                    {user?.is_admin && (md.managers || []).length > 0 && (
+                        <label className="block">
+                            <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5 block">مدیر پروژه</span>
+                            <select value={form.manager_id || ''} onChange={e => setForm({ ...form, manager_id: e.target.value })} className="glass-field w-full border-2 p-3.5 rounded-xl font-semibold">
+                                <option value="">(بدون مدیر پروژه — فقط مدیر کل)</option>
+                                {md.managers.map(m => <option key={m.id} value={m.id}>{toPersianNum(m.full_name)}</option>)}
+                            </select>
+                        </label>
+                    )}
                     <label className="block">
                         <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5 block">مشتری / سازمان</span>
                         <select value={form.org_id} onChange={e => setForm({ ...form, org_id: e.target.value, contact_name: '' })} className="glass-field w-full border-2 p-3.5 rounded-xl font-semibold dark:text-white cursor-pointer">
@@ -224,6 +240,7 @@ export default function EventCreate({ md, onDone, onClose, registerGuard }) {
                                     <span>
                                         <span className="font-bold block text-slate-800 dark:text-white">{toPersianNum(v.name)}</span>
                                         <span className="text-sm flex items-center gap-2 mt-1 opacity-90">ظرفیت: {toPersianNum(v.capacity || 0)} نفر {v.label && <span className="bg-white/80 px-2 py-0.5 rounded-md text-xs">{v.label}</span>}</span>
+                                        {busyVenues[v.id] && <span className="block text-xs text-red-700 dark:text-red-300 mt-1 font-semibold">⚠ در این زمان برای «{toPersianNum(busyVenues[v.id][0])}» رزرو شده است</span>}
                                     </span>
                                     <span className={`w-7 h-7 rounded-full border-2 flex items-center justify-center shrink-0 ${sel ? 'bg-grad border-indigo-600 text-white' : 'border-slate-300 dark:border-white/10'}`}>{sel && <Icons.Check />}</span>
                                 </button>

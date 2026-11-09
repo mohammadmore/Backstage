@@ -13,3 +13,8 @@ const host = document.createElement('div');
 host.id = 'ui-host';
 document.body.appendChild(host);
 ReactDOM.createRoot(host).render(<UIHost />);
+
+// نصب به‌عنوان برنامه (PWA): فقط در نسخه نهایی و روی https یا localhost
+if ('serviceWorker' in navigator && import.meta.env.PROD && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(() => { /* بدون PWA ادامه می‌دهیم */ }); });
+}

@@ -61,7 +61,7 @@ export default function NotificationPanel({ notifs, onRead, onReadAll, onOpen, r
                                             {evId ? (
                                                 <button type="button" onClick={() => { setOpen(false); onOpen(evId, n); }} className="text-right leading-relaxed hover:underline">{toPersianNum(n.message)}</button>
                                             ) : <p className="leading-relaxed">{toPersianNum(n.message)}</p>}
-                                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1" dir="ltr">{toJalaliDateTime(n.created_at)}</p>
+                                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">{toJalaliDateTime(n.created_at)}</p>
                                         </div>
                                         {!actions && <button type="button" onClick={() => onRead(n.id)} title="خوانده شد" aria-label="علامت خوانده‌شده" className="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-green-600 hover:bg-white dark:hover:bg-white/10"><Icons.Check /></button>}
                                     </div>

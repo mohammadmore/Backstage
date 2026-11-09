@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../lib/api';
-import { toPersianNum, toJalaliDateTime, isOn, parseDate, detectPhase, isEventOver, TIMINGS } from '../lib/utils';
+import { toPersianNum, toJalaliDateTime, isOn, parseDate, detectPhase, isEventOver, TIMINGS, isOverdue, dueLabel } from '../lib/utils';
+import { navigate } from '../lib/router';
+import { TaskExtrasModal } from '../components/ExtrasPanel';
 import { toast, formDialog } from '../lib/ui';
 import { Icons } from '../components/Icons';
 import NotificationPanel from '../components/NotificationPanel';
@@ -10,7 +12,7 @@ const loadPref = () => { try { return localStorage.getItem('evm_staff_pending') 
 // =====================================
 // داشبورد کارمندان
 // =====================================
-export default function StaffDashboard({ user, onLogout, onChangePassword, theme, onToggleTheme }) {
+export default function StaffDashboard({ user, onLogout, onChangePassword, onSecurity, theme, onToggleTheme }) {
     const [groups, setGroups] = useState([]);
     const [loading, setLoading] = useState(true);
     const [staffList, setStaffList] = useState([]);
@@ -18,6 +20,7 @@ export default function StaffDashboard({ user, onLogout, onChangePassword, theme
     const [onlyPending, setOnlyPending] = useState(loadPref);
     const [showPast, setShowPast] = useState(false);
     const [highlight, setHighlight] = useState(null);
+    const [extras, setExtras] = useState(null); // {eventId, task}
     const canDelegate = isOn(user.can_delegate);
 
     const loadTasks = async () => { const res = await api('get_my_tasks'); if (res) setGroups(res); setLoading(false); };
@@ -98,6 +101,8 @@ export default function StaffDashboard({ user, onLogout, onChangePassword, theme
                             {t.role_tag && <span className="text-xs text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-700/50 bg-grad-soft">@{toPersianNum(t.role_tag)}</span>}
                             {locked && <span className="text-xs text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/40 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-800 inline-flex items-center gap-1"><Icons.Lock /> منتظر: {toPersianNum(t.dep_title)}</span>}
                             {pendingDeleg && <span className="text-xs text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-md border border-blue-200">در انتظار تایید واگذاری</span>}
+                            {t.due_at && !done && <span className={`text-xs px-2 py-0.5 rounded-md border inline-flex items-center gap-1 ${isOverdue(t) ? 'text-red-700 bg-red-50 border-red-300 dark:bg-red-900/30 dark:text-red-300 font-semibold' : 'text-slate-600 dark:text-slate-300 glass-soft'}`} title={toJalaliDateTime(t.due_at)}><Icons.Clock /> {isOverdue(t) ? 'عقب‌افتاده: ' : 'موعد: '}{dueLabel(t.due_at)}</span>}
+                            <button type="button" onClick={() => setExtras({ eventId: t.event_id, task: t })} className="text-xs px-2 py-0.5 rounded-md border glass-soft text-slate-600 dark:text-slate-300" aria-label={`فایل‌ها و یادداشت‌های «${t.title}»`}>📎 {toPersianNum(Number(t.attach_count) || 0)} · 💬 {toPersianNum(Number(t.note_count) || 0)}</button>
                         </div>
                         {hasIssue && <div className="text-xs text-red-700 bg-red-100 p-2 rounded-lg mt-2 border border-red-200">مانع: {toPersianNum(t.issue_note)}</div>}
                         {!done && !locked && (
@@ -127,6 +132,7 @@ export default function StaffDashboard({ user, onLogout, onChangePassword, theme
                     <div className="text-sm text-slate-300 flex flex-wrap gap-x-4 gap-y-1">
                         <span className="flex items-center gap-1.5"><Icons.Building /> {toPersianNum(g.event.venue_name) || 'بدون سالن'}</span>
                         <span className="flex items-center gap-1.5"><Icons.Calendar /> {toJalaliDateTime(g.event.start_date)}</span>
+                        {!isPast(g) && <button type="button" onClick={() => navigate(`checkin/${g.event.id}`)} className="text-xs bg-white/15 border border-white/25 px-2.5 py-1 rounded-lg font-semibold">📷 پذیرش مهمانان</button>}
                     </div>
                     <div className="mt-3 flex items-center gap-3">
                         <div className="flex-1 h-1.5 rounded-full overflow-hidden bg-white/20" role="progressbar" aria-valuenow={doneN} aria-valuemax={total} aria-valuemin={0}><div className="bg-green-400 h-full" style={{ width: `${total ? (doneN / total) * 100 : 0}%` }} /></div>
@@ -162,6 +168,7 @@ export default function StaffDashboard({ user, onLogout, onChangePassword, theme
                 <div className="flex gap-1.5 items-center shrink-0">
                     <NotificationPanel onRefresh={fetchNotifs} notifs={notifs} onRead={markRead} onReadAll={markAll} onOpen={openEvent} />
                     <button type="button" onClick={onToggleTheme} className="p-2 on-nav rounded-full" aria-label={theme === 'dark' ? 'پوسته روشن' : 'پوسته تیره'} title="تغییر پوسته">{theme === 'dark' ? <Icons.Sun /> : <Icons.Moon />}</button>
+                    {onSecurity && <button type="button" onClick={onSecurity} className="p-2 on-nav rounded-full" aria-label="ورود دومرحله‌ای" title="ورود دومرحله‌ای">🛡</button>}
                     <button type="button" onClick={onChangePassword} className="p-2 on-nav rounded-full" aria-label="تغییر رمز عبور" title="تغییر رمز عبور"><Icons.Key /></button>
                     <button type="button" onClick={onLogout} className="text-white bg-white/10 px-3 py-2 rounded-xl text-sm font-semibold hover:bg-white/20">خروج</button>
                 </div>
@@ -192,6 +199,7 @@ export default function StaffDashboard({ user, onLogout, onChangePassword, theme
                     </div>
                 )}
             </main>
+            {extras && <TaskExtrasModal eventId={extras.eventId} task={extras.task} currentUserId={user.id} onClose={() => setExtras(null)} onChanged={loadTasks} />}
         </div>
     );
 }
