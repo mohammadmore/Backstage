@@ -139,7 +139,7 @@ function event_conflicts(int $eventId): array
     if (!$ev || !($w = event_window($ev['start_date'], $ev['end_date']))) return ['venue' => [], 'staff' => [], 'busy' => []];
     $from = date('Y-m-d H:i:s', $w[0] - 12 * 3600); $to = date('Y-m-d H:i:s', $w[1]);
     $others = q_all("SELECT e.id, e.title, e.venue_id, e.start_date, e.end_date, v.name AS venue_name FROM events e LEFT JOIN venues v ON v.id = e.venue_id
-        WHERE e.id <> ? AND e.is_template = 0 AND e.status <> 'completed' AND e.start_date IS NOT NULL AND e.start_date < ? AND COALESCE(e.end_date, DATE_ADD(e.start_date, INTERVAL 12 HOUR)) > ?", [$eventId, $to, $from]);
+        WHERE e.id <> ? AND e.is_template = 0 AND e.status <> 'completed' AND e.archived_at IS NULL AND e.start_date IS NOT NULL AND e.start_date < ? AND COALESCE(e.end_date, DATE_ADD(e.start_date, INTERVAL 12 HOUR)) > ?", [$eventId, $to, $from]);
     $venue = []; $overIds = [];
     foreach ($others as $o) {
         $ow = event_window($o['start_date'], $o['end_date']);

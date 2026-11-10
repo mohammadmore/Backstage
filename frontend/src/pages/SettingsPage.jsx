@@ -36,7 +36,7 @@ export default function SettingsPage({ user, onOpenSecurity }) {
     const set = (k, v) => { setS({ ...s, [k]: v }); setDirty(true); };
     const save = async () => {
         const payload = {};
-        ['twofa_mode', 'sms_provider', 'sms_sender', 'sms_signature', 'sms_api_key', 'reminder_hour', 'backup_auto', 'backup_keep', 'company_name',
+        ['twofa_mode', 'sms_provider', 'sms_sender', 'sms_signature', 'sms_api_key', 'reminder_hour', 'backup_auto', 'backup_keep', 'archive_after_days', 'company_name',
             ...Object.keys(s.sms_events).map(k => 'sms_on_' + k)].forEach(k => { if (s[k] !== undefined && s[k] !== null) payload[k] = typeof s[k] === 'boolean' ? s[k] : String(s[k]); });
         Object.keys(s.sms_events).forEach(k => { payload['sms_on_' + k] = s['sms_on_' + k] === true || s['sms_on_' + k] === '1'; });
         payload.backup_auto = s.backup_auto === true || s.backup_auto === '1';
@@ -114,6 +114,11 @@ export default function SettingsPage({ user, onOpenSecurity }) {
 
             <Section title="زمان‌بندی خودکار (Cron)" desc="یادآوری‌ها، اعلان وظایف عقب‌افتاده، ارسال پیامک‌های صف و پشتیبان‌گیری خودکار با اجرای دوره‌ای این فرمان انجام می‌شود. در cPanel → Cron Jobs، هر ۱۵ دقیقه:">
                 <code className="block glass-soft border rounded-xl p-3 text-xs break-all" dir="ltr">php {'{'}مسیر پوشه event{'}'}/cron.php</code>
+                <label className="text-sm text-slate-700 dark:text-slate-300 flex flex-wrap items-center gap-2 mt-4">بایگانی خودکار رویدادهای «پایان‌یافته»
+                    <select value={String(s.archive_after_days ?? '0')} onChange={e => set('archive_after_days', e.target.value)} className="glass-field border-2 p-1.5 rounded-lg">
+                        {[['0', 'غیرفعال'], ['1', '۱ روز بعد از پایان'], ['7', '۷ روز بعد از پایان'], ['30', '۳۰ روز بعد از پایان'], ['90', '۹۰ روز بعد از پایان']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    </select>
+                </label>
                 <p className="text-sm mt-3 text-slate-600 dark:text-slate-300">آخرین اجرا: {s.cron_last_run ? <bdi>{toJalaliDateTime(s.cron_last_run)}</bdi> : <b className="text-amber-700 dark:text-amber-400">هنوز اجرا نشده است</b>}</p>
             </Section>
 

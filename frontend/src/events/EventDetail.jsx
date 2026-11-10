@@ -250,6 +250,17 @@ export default function EventDetail({ eventId, onBack, md, user, tab = 'operatio
     };
     const resolveDelegation = (delId, status) => apiCall('resolve_delegation', { delegation_id: delId, status }, status === 'approved' ? 'واگذاری تایید شد.' : 'درخواست رد شد.');
 
+    // ---------- بایگانی ----------
+    const toggleArchive = async () => {
+        if (ev.archived_at) {
+            if (await api('unarchive_event', { event_id: ev.id })) { toast('رویداد از بایگانی خارج شد و در داشبورد جاری نمایش داده می‌شود.'); loadData(); }
+            return;
+        }
+        const notDone = ev.status !== 'completed';
+        if (!await confirmDialog({ title: 'بایگانی رویداد', message: `${notDone ? 'وضعیت این رویداد هنوز «پایان‌یافته» نیست. ' : ''}رویداد از داشبورد اصلی و داشبورد همکاران برداشته می‌شود و در بخش «بایگانی» نگهداری می‌شود. اطلاعات حذف نمی‌شود و در تقویم و گزارش‌ها باقی می‌ماند.`, confirmText: 'بایگانی' })) return;
+        if (await api('archive_events', { event_ids: [ev.id] })) { toast('رویداد بایگانی شد.'); loadData(); }
+    };
+
     // ---------- حذف رویداد (فقط مدیر کل) ----------
     const deleteEvent = async () => {
         const counts = [data.payments && data.payments.length ? `${toPersianNum(data.payments.length)} پرداخت` : '', Number(data.guest_stats?.total) > 0 ? `${toPersianNum(data.guest_stats.total)} مهمان` : ''].filter(Boolean).join('، ');
@@ -286,6 +297,11 @@ export default function EventDetail({ eventId, onBack, md, user, tab = 'operatio
         <div className="fade-in max-w-[90rem] mx-auto pb-24">
             {/* تایمر چسبان زیر هدر */}
             <div className="sticky top-[72px] sm:top-[76px] z-30 -mx-4 md:-mx-8 mb-5"><EventTimer start={ev.start_date} end={ev.end_date} /></div>
+            {ev.archived_at && (
+                <div className="glass-soft border rounded-2xl px-4 py-3 mb-5 text-sm text-slate-700 dark:text-slate-200">
+                    🗄 این رویداد در <bdi>{toJalaliDateTime(ev.archived_at)}</bdi>{ev.archived_by ? ` توسط ${ev.archived_by}` : ''} بایگانی شده و در داشبورد جاری و داشبورد همکاران نمایش داده نمی‌شود.
+                </div>
+            )}
 
             <div className="flex flex-col md:flex-row justify-between md:items-end gap-4 mb-5">
                 <div>
@@ -293,6 +309,7 @@ export default function EventDetail({ eventId, onBack, md, user, tab = 'operatio
                     <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <span className="bg-grad text-white px-2.5 py-0.5 rounded-lg text-xs font-semibold tracking-wider">پرونده {toPersianNum(eventId)}</span>
                         <span className={`px-2.5 py-0.5 rounded-lg text-xs font-semibold border ${st.badge}`}>{st.label}</span>
+                        {ev.archived_at && <span className="glass-soft border px-2.5 py-0.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300">🗄 بایگانی‌شده</span>}
                         {delegations.length > 0 && <button type="button" onClick={() => onTabChange('team')} className="bg-red-500 text-white px-2.5 py-0.5 rounded-lg text-xs font-semibold">{toPersianNum(delegations.length)} درخواست واگذاری</button>}
                     </div>
                     <h1 className="text-2xl sm:text-3xl font-bold text-slate-800 dark:text-white">{toPersianNum(ev.title)}</h1>
@@ -302,6 +319,7 @@ export default function EventDetail({ eventId, onBack, md, user, tab = 'operatio
                     {access.tasks && <button type="button" onClick={() => duplicateEvent(ev, false)} className="glass border px-3.5 py-2.5 rounded-xl font-semibold text-sm">کپی رویداد</button>}
                     {access.tasks && <button type="button" onClick={() => duplicateEvent(ev, true)} className="glass border px-3.5 py-2.5 rounded-xl font-semibold text-sm">ذخیره به‌عنوان قالب</button>}
                     {access.tasks && <button type="button" onClick={openEditModal} className="glass border-2 text-slate-700 dark:text-slate-300 px-4 py-2.5 rounded-xl font-semibold hover:bg-white/60 dark:hover:bg-white/10 inline-flex items-center gap-2"><Icons.Edit /> ویرایش اطلاعات</button>}
+                    {access.tasks && <button type="button" onClick={toggleArchive} className="glass border px-3.5 py-2.5 rounded-xl font-semibold text-sm">{ev.archived_at ? '↩ خروج از بایگانی' : '🗄 بایگانی'}</button>}
                     {user && user.is_admin && <button type="button" onClick={deleteEvent} className="glass border-2 border-red-200 dark:border-red-900/60 text-red-600 dark:text-red-400 px-3.5 py-2.5 rounded-xl font-semibold text-sm hover:bg-red-50 dark:hover:bg-red-900/30 inline-flex items-center gap-1.5"><Icons.Trash /> حذف رویداد</button>}
                     <label className="sr-only" htmlFor="ev-status">وضعیت رویداد</label>
                     <select id="ev-status" disabled={!access.tasks} value={ev.status} onChange={e => apiCall('update_event_status', { status: e.target.value }, 'وضعیت رویداد تغییر کرد.')} className="bg-grad text-white px-4 py-2.5 rounded-xl font-semibold cursor-pointer">

@@ -703,12 +703,15 @@ function h_get_events(array $in, array $user): array
     $tpl = !empty($in['templates']) ? 1 : 0;
     // قالب‌ها برای همه برنامه‌ریزان قابل استفاده‌اند
     if ($tpl) { $where = '1=1'; $params = []; }
+    // پیش‌فرض: فقط رویدادهای فعال؛ archived=1 فقط بایگانی‌شده‌ها
+    elseif (!empty($in['archived'])) $where .= ' AND e.archived_at IS NOT NULL';
+    else $where .= ' AND e.archived_at IS NULL';
     $rows = q_all("SELECT e.*, o.name AS org_name, o.logo AS org_logo, v.name AS venue_name, m.full_name AS manager_name,
             (SELECT COUNT(*) FROM event_tasks t WHERE t.event_id = e.id) AS task_count,
             (SELECT COUNT(*) FROM event_tasks t WHERE t.event_id = e.id AND t.is_done = 1) AS done_count,
             (SELECT COUNT(*) FROM event_tasks t WHERE t.event_id = e.id AND t.is_done = 0 AND t.due_at IS NOT NULL AND t.due_at < NOW()) AS overdue_count
         FROM events e LEFT JOIN organizations o ON e.org_id = o.id LEFT JOIN venues v ON e.venue_id = v.id LEFT JOIN users m ON m.id = e.manager_id
-        WHERE e.is_template = ? AND $where ORDER BY e.id DESC", [$tpl, ...$params]);
+        WHERE e.is_template = ? AND $where ORDER BY " . (!empty($in['archived']) ? 'e.archived_at DESC, e.id DESC' : 'e.id DESC'), [$tpl, ...$params]);
     foreach ($rows as &$r) {
         unset($r['portal_token']);
         if ($user['perms']['finance']) $r['fin'] = event_finance((int)$r['id'], $r);
@@ -772,7 +775,7 @@ function h_get_my_tasks(array $in, array $user): array
         LEFT JOIN venues v ON v.id = e.venue_id
         LEFT JOIN organizations o ON o.id = e.org_id
         LEFT JOIN event_tasks p ON p.id = t.depends_on_id
-        WHERE t.assignee_id = ? AND e.is_template = 0
+        WHERE t.assignee_id = ? AND e.is_template = 0 AND e.archived_at IS NULL
         ORDER BY e.id DESC, t.id ASC', [$user['id']]);
     $groups = [];
     foreach ($rows as $r) {

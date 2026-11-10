@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 if (!defined('EVENT_APP')) { http_response_code(403); exit; }
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 /**
  * مهاجرت نسخه‌بندی‌شده دیتابیس.
@@ -23,7 +23,7 @@ function run_migrations(): void
     }
     try {
         $version = (int)(q_val("SELECT v FROM schema_meta WHERE k = 'version'") ?? 0);
-        $steps = [1 => 'migration_1', 2 => 'migration_2', 3 => 'migration_3', 4 => 'migration_4'];
+        $steps = [1 => 'migration_1', 2 => 'migration_2', 3 => 'migration_3', 4 => 'migration_4', 5 => 'migration_5'];
         foreach ($steps as $v => $fn) {
             if ($version < $v) {
                 $fn($pdo);
@@ -209,4 +209,12 @@ function default_due_offset(string $timing, ?string $start, ?string $end): ?int
     if ($v === null) return $len;
     if ($v === 'end+3d') return $len + 3 * 1440;
     return (int)$v;
+}
+
+/** نسخه ۵: بایگانی رویدادها */
+function migration_5(PDO $pdo): void
+{
+    try_exec($pdo, 'ALTER TABLE `events` ADD COLUMN `archived_at` datetime DEFAULT NULL');
+    try_exec($pdo, 'ALTER TABLE `events` ADD COLUMN `archived_by` varchar(100) DEFAULT NULL');
+    try_exec($pdo, 'ALTER TABLE `events` ADD INDEX `idx_events_archived` (`archived_at`)');
 }

@@ -28,6 +28,7 @@ const SETTING_KEYS = [
     'sms_on_assign' => 'bool', 'sms_on_issue' => 'bool', 'sms_on_delegation' => 'bool', 'sms_on_reminder' => 'bool', 'sms_on_portal' => 'bool',
     'reminder_hour' => 'hour',
     'backup_auto' => 'bool', 'backup_keep' => 'int',
+    'archive_after_days' => 'days',
     'company_name' => 'str',
 ];
 
@@ -43,6 +44,7 @@ function h_get_settings(): array
     $out['sms_provider'] = sms_provider();
     $out['reminder_hour'] = $out['reminder_hour'] ?? '18';
     $out['backup_keep'] = $out['backup_keep'] ?? '7';
+    $out['archive_after_days'] = $out['archive_after_days'] ?? '0';
     $out['sms_events'] = SMS_EVENTS;
     $out['cron_last_run'] = get_setting('cron_last_run', null);
     $out['curl'] = function_exists('curl_init');
@@ -58,6 +60,7 @@ function h_save_settings(array $in, array $user): array
         if (is_array($type)) { if (!in_array($v, $type, true)) throw new ApiError("مقدار «$k» نامعتبر است."); }
         elseif ($type === 'bool') $v = in_bool($in, $k) ? '1' : '0';
         elseif ($type === 'int') $v = (string)max(1, min(90, (int)to_en_digits((string)$v)));
+        elseif ($type === 'days') $v = (string)max(0, min(365, (int)to_en_digits((string)$v)));
         elseif ($type === 'hour') $v = (string)max(0, min(23, (int)to_en_digits((string)$v)));
         elseif ($type === 'secret') { $v = trim((string)$v); if ($v === '' || str_starts_with($v, '••••')) continue; if (mb_strlen($v) > 200) throw new ApiError('کلید API بیش از حد طولانی است.'); }
         else $v = in_str($in, $k, 100);

@@ -11,6 +11,7 @@ const FILTERS = [
     ...Object.entries(EVENT_STATUS).map(([k, v]) => ({ id: k, label: v.label, test: (e) => e.status === k })),
     { id: 'debt', label: 'بدهکار', test: (e) => e.fin && e.fin.remaining > 0 && e.status !== 'draft', finance: true },
     { id: 'overdue', label: 'دارای کار عقب‌افتاده', test: (e) => Number(e.overdue_count) > 0 },
+    { id: 'archived', label: '🗄 بایگانی', test: () => true, archive: true },
 ];
 const SORTS = {
     upcoming: { label: 'نزدیک‌ترین تاریخ', fn: (a, b) => (parseDate(a.start_date)?.getTime() ?? Infinity) - (parseDate(b.start_date)?.getTime() ?? Infinity) },
@@ -32,10 +33,35 @@ export default function EventDashboard({ onOpen, onNewEvent, refreshKey, user })
     const [query, setQuery] = useState('');
     const [filter, setFilter] = useState(() => load('evm_ev_filter', 'active'));
     const [sort, setSort] = useState(() => load('evm_ev_sort', 'upcoming'));
+    const [archived, setArchived] = useState(null);           // فهرست بایگانی (با باز شدن تب بارگذاری می‌شود)
+    const [archCount, setArchCount] = useState({ archived: 0, completed_active: 0 });
+    const isArchive = filter === 'archived';
+
+    const loadActive = () => api('get_events').then((res) => setEventsList(res || []));
+    const loadArchCount = () => api('archive_count', null, {}, { silent: true }).then(r => r && setArchCount(r));
+    const loadArchived = () => api('get_events', null, { archived: 1 }).then(r => setArchived(r || []));
+    const refreshAll = () => { loadActive(); loadArchCount(); if (archived !== null || isArchive) loadArchived(); };
+    useEffect(() => { if (isArchive && archived === null) loadArchived(); }, [isArchive]);
+
+    const archiveOne = async (ev) => {
+        if (!await confirmDialog({ title: 'بایگانی رویداد', message: `«${ev.title}» از داشبورد اصلی و داشبورد همکاران برداشته می‌شود و در بخش «بایگانی» نگهداری می‌شود. اطلاعات آن حذف نمی‌شود و در تقویم و گزارش‌ها باقی می‌ماند. هر زمان بخواهید می‌توانید آن را از بایگانی خارج کنید.`, confirmText: 'بایگانی' })) return;
+        if (await api('archive_events', { event_ids: [ev.id] })) { toast('رویداد بایگانی شد.'); refreshAll(); }
+    };
+    const archiveAllCompleted = async () => {
+        const n = archCount.completed_active;
+        if (!await confirmDialog({ title: 'بایگانی رویدادهای پایان‌یافته', message: `${toPersianNum(n)} رویداد پایان‌یافته به بایگانی منتقل می‌شود. اطلاعات آن‌ها حذف نمی‌شود و هر زمان قابل بازگرداندن است.`, confirmText: `بایگانی ${toPersianNum(n)} رویداد` })) return;
+        const r = await api('archive_events', { all_completed: 1 });
+        if (r) { toast(`${toPersianNum(r.count)} رویداد بایگانی شد.`); refreshAll(); }
+    };
+    const unarchive = async (ev) => {
+        if (await api('unarchive_event', { event_id: ev.id })) { toast('رویداد از بایگانی خارج شد.'); refreshAll(); }
+    };
 
     const loadTemplates = () => api('get_events', null, { templates: 1 }).then(r => setTemplates(r || []));
     useEffect(() => {
-        api('get_events').then((res) => setEventsList(res || []));
+        loadActive();
+        loadArchCount();
+        if (archived !== null) loadArchived();
         api('get_overdue', null, {}, { silent: true }).then(r => setOverdue(r || []));
         if (perms.tasks) loadTemplates();
     }, [refreshKey]);
@@ -62,10 +88,11 @@ export default function EventDashboard({ onOpen, onNewEvent, refreshKey, user })
     useEffect(() => { save('evm_ev_filter', filter); }, [filter]);
     useEffect(() => { save('evm_ev_sort', sort); }, [sort]);
 
-    const all = eventsList || [];
+    const all = (isArchive ? archived : eventsList) || [];
     const f = FILTERS.find(x => x.id === filter) || FILTERS[0];
     const list = all.filter(f.test).filter(e => matches(query, e.title, e.org_name, e.venue_name, e.contact_name, String(e.id))).sort(SORTS[sort]?.fn || SORTS.upcoming.fn);
-    const countFor = (fx) => all.filter(fx.test).length;
+    const countFor = (fx) => fx.archive ? archCount.archived : (eventsList || []).filter(fx.test).length;
+    const canArchive = (ev) => perms.tasks && ev.status === 'completed';
     const filters = FILTERS.filter(fx => !fx.finance || perms.finance);
 
     return (
@@ -99,13 +126,13 @@ export default function EventDashboard({ onOpen, onNewEvent, refreshKey, user })
             )}
 
             <div className="flex flex-col lg:flex-row gap-3 mb-5">
-                <div className="relative flex-1">
+                <div className="relative flex-1 lg:min-w-[16rem]">
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none"><Icons.Search /></span>
                     <input type="search" aria-label="جستجوی رویداد" placeholder="جستجو در عنوان، سازمان، مکان یا شماره پرونده..." value={query} onChange={e => setQuery(e.target.value)} className="glass-field w-full border-2 pr-10 pl-3 py-2.5 rounded-xl dark:text-white focus:border-indigo-500" />
                 </div>
-                <div className="flex gap-2 overflow-x-auto custom-scroll pb-1" role="group" aria-label="فیلتر وضعیت">
+                <div className="flex gap-2 overflow-x-auto custom-scroll pb-1 min-w-0" role="group" aria-label="فیلتر وضعیت">
                     {filters.map(fx => (
-                        <button key={fx.id} type="button" aria-pressed={filter === fx.id} onClick={() => setFilter(fx.id)} className={`whitespace-nowrap px-3.5 py-2 rounded-xl text-sm font-semibold border transition-colors ${filter === fx.id ? 'bg-grad text-white border-transparent' : 'glass text-slate-600 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-white/10'}`}>
+                        <button key={fx.id} type="button" aria-pressed={filter === fx.id} hidden={fx.archive && !archCount.archived && !isArchive} onClick={() => setFilter(fx.id)} className={`whitespace-nowrap px-3.5 py-2 rounded-xl text-sm font-semibold border transition-colors ${filter === fx.id ? 'bg-grad text-white border-transparent' : 'glass text-slate-600 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-white/10'}`}>
                             {fx.label} <span className="opacity-70 text-xs">{toPersianNum(countFor(fx))}</span>
                         </button>
                     ))}
@@ -115,8 +142,19 @@ export default function EventDashboard({ onOpen, onNewEvent, refreshKey, user })
                 </select>
             </div>
 
-            {eventsList === null ? (
+            {!isArchive && perms.tasks && archCount.completed_active > 0 && (filter === 'all' || filter === 'completed') && (
+                <div className="glass-soft border rounded-2xl px-4 py-3 mb-5 flex flex-wrap items-center justify-between gap-3 text-sm">
+                    <span className="text-slate-600 dark:text-slate-300">{toPersianNum(archCount.completed_active)} رویداد پایان‌یافته در داشبورد است. با بایگانی، فهرست جاری خلوت‌تر می‌شود.</span>
+                    <button type="button" onClick={archiveAllCompleted} className="glass border px-4 py-2 rounded-xl font-semibold text-violet-700 dark:text-violet-300">🗄 بایگانی همه پایان‌یافته‌ها</button>
+                </div>
+            )}
+            {isArchive && (
+                <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">رویدادهای بایگانی‌شده در داشبورد جاری و داشبورد همکاران نمایش داده نمی‌شوند، ولی در تقویم و گزارش‌ها حساب می‌شوند.</p>
+            )}
+            {(isArchive ? archived === null : eventsList === null) ? (
                 <div className="text-center py-24 text-slate-500 pulse-text">در حال دریافت رویدادها...</div>
+            ) : isArchive && all.length === 0 ? (
+                <div className="glass text-center py-16 text-slate-500 rounded-3xl border">بایگانی خالی است.</div>
             ) : all.length === 0 ? (
                 <div className="glass text-center py-24 rounded-3xl border-2 border-dashed">
                     <div className="text-indigo-500 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-5 bg-grad-soft"><Icons.Building /></div>
@@ -126,18 +164,21 @@ export default function EventDashboard({ onOpen, onNewEvent, refreshKey, user })
             ) : list.length === 0 ? (
                 <div className="glass text-center py-16 text-slate-500 rounded-3xl border">
                     رویدادی با این جستجو/فیلتر پیدا نشد.
-                    {filter !== 'all' && <button type="button" onClick={() => setFilter('all')} className="block mx-auto mt-3 text-indigo-600 dark:text-indigo-400 font-semibold underline">نمایش همه رویدادها</button>}
+                    {filter !== 'all' && !isArchive && <button type="button" onClick={() => setFilter('all')} className="block mx-auto mt-3 text-indigo-600 dark:text-indigo-400 font-semibold underline">نمایش همه رویدادها</button>}
                 </div>
             ) : (
                 <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                     {list.map(ev => {
                         const st = statusInfo(ev.status);
                         return (
-                            <li key={ev.id}>
+                            <li key={ev.id} className="relative">
                                 <a href={`#/events/${ev.id}`} onClick={(e) => { e.preventDefault(); onOpen(ev.id); }} className="glass p-5 rounded-3xl border hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-md transition-all flex flex-col h-full group">
                                     <div className="flex justify-between items-start mb-4">
                                         {ev.org_logo ? <img src={ev.org_logo} alt="" className="w-12 h-12 rounded-xl object-cover border border-violet-200/60 dark:border-white/10 bg-white" /> : <div className="glass-soft w-12 h-12 rounded-xl flex items-center justify-center text-slate-500"><Icons.Building /></div>}
-                                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-lg border ${st.card}`}>{st.label}</span>
+                                        <span className="flex flex-col items-end gap-1">
+                                            <span className={`text-xs font-semibold px-2.5 py-1 rounded-lg border ${st.card}`}>{st.label}</span>
+                                            {ev.archived_at && <span className="text-[11px] px-2 py-0.5 rounded-md border glass-soft text-slate-600 dark:text-slate-300" title={ev.archived_by ? `توسط ${ev.archived_by}` : undefined}>🗄 بایگانی {toJalaliDate(ev.archived_at)}</span>}
+                                        </span>
                                     </div>
                                     <span className="text-xs text-slate-500 dark:text-slate-400">پرونده {toPersianNum(ev.id)}</span>
                                     <h2 className="font-bold text-lg mb-3 text-slate-800 dark:text-white leading-snug">{toPersianNum(ev.title)}</h2>
@@ -152,8 +193,10 @@ export default function EventDashboard({ onOpen, onNewEvent, refreshKey, user })
                                         {ev.fin && ev.fin.total > 0 && <span className={`text-[11px] px-2 py-0.5 rounded-md border ${PAY_STATUS[ev.fin.pay_status].cls}`}>{PAY_STATUS[ev.fin.pay_status].label}</span>}
                                         {ev.client_approved_at && <span className="text-[11px] px-2 py-0.5 rounded-md border bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800">✓ تایید کارفرما</span>}
                                     </div>
-                                    <span className="glass-soft mt-4 text-center py-2.5 rounded-xl font-semibold text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white transition-colors">ورود به اتاق فرمان</span>
+                                    <span className={`glass-soft mt-4 text-center py-2.5 rounded-xl font-semibold text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white transition-colors ${(ev.archived_at ? perms.tasks : canArchive(ev)) ? 'ml-[3.25rem]' : ''}`}>ورود به اتاق فرمان</span>
                                 </a>
+                                {!ev.archived_at && canArchive(ev) && <button type="button" onClick={() => archiveOne(ev)} className="absolute bottom-5 left-5 h-11 w-11 rounded-xl glass border text-lg hover:border-violet-400" aria-label={`بایگانی ${ev.title}`} title="بایگانی">🗄</button>}
+                                {ev.archived_at && perms.tasks && <button type="button" onClick={() => unarchive(ev)} className="absolute bottom-5 left-5 h-11 w-11 rounded-xl glass border text-lg hover:border-violet-400" aria-label={`خروج ${ev.title} از بایگانی`} title="خروج از بایگانی">↩</button>}
                             </li>
                         );
                     })}

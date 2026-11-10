@@ -13,6 +13,9 @@ $ROUTES += [
     'duplicate_event'  => ['h_duplicate_event', 'planner', 'POST'],
     'delete_template'  => ['h_delete_template', 'planner', 'POST'],
     'delete_event'     => ['h_delete_event', 'admin', 'POST'],
+    'archive_events'   => ['h_archive_events', 'planner', 'POST'],
+    'unarchive_event'  => ['h_unarchive_event', 'planner', 'POST'],
+    'archive_count'    => ['h_archive_count', 'office', 'GET'],
 ];
 
 /**
@@ -74,7 +77,7 @@ function h_check_conflicts(array $in, array $user): array
     if (!$start) return ['venue' => [], 'venues_busy' => (object)[]];
     $w = event_window($start, $end);
     $rows = q_all("SELECT e.id, e.title, e.venue_id, e.start_date, e.end_date FROM events e
-        WHERE e.id <> ? AND e.is_template = 0 AND e.status <> 'completed' AND e.venue_id IS NOT NULL AND e.start_date IS NOT NULL
+        WHERE e.id <> ? AND e.is_template = 0 AND e.status <> 'completed' AND e.archived_at IS NULL AND e.venue_id IS NOT NULL AND e.start_date IS NOT NULL
           AND e.start_date < ? AND COALESCE(e.end_date, DATE_ADD(e.start_date, INTERVAL 12 HOUR)) > ?", [$exclude, date('Y-m-d H:i:s', $w[1]), date('Y-m-d H:i:s', $w[0])]);
     $busy = [];
     foreach ($rows as $r) $busy[(int)$r['venue_id']][] = $r['title'];
@@ -87,7 +90,7 @@ function h_get_overdue(array $in, array $user): array
     [$where, $params] = event_scope_sql($user);
     return q_all("SELECT t.id, t.title, t.due_at, t.timing_tag, t.event_id, e.title AS event_title, u.full_name AS assignee_name
         FROM event_tasks t JOIN events e ON e.id = t.event_id LEFT JOIN users u ON u.id = t.assignee_id
-        WHERE t.is_done = 0 AND t.due_at IS NOT NULL AND t.due_at < NOW() AND e.is_template = 0 AND e.status <> 'completed' AND $where
+        WHERE t.is_done = 0 AND t.due_at IS NOT NULL AND t.due_at < NOW() AND e.is_template = 0 AND e.status <> 'completed' AND e.archived_at IS NULL AND $where
         ORDER BY t.due_at ASC LIMIT 300", $params);
 }
 
@@ -193,4 +196,50 @@ function h_delete_event(array $in, array $user): array
     delete_event_cascade($id);
     error_log("event #{$id} «{$ev['title']}» deleted by {$user['username']}");
     return ['success' => true];
+}
+
+/**
+ * بایگانی یک یا چند رویداد (event_ids) یا همه رویدادهای پایان‌یافته در دسترس (all_completed=1).
+ * رویداد بایگانی‌شده از داشبورد اصلی، داشبورد همکاران و هشدارهای عقب‌افتادگی حذف می‌شود
+ * ولی در تقویم و گزارش‌ها باقی می‌ماند.
+ */
+function h_archive_events(array $in, array $user): array
+{
+    if (!empty($in['all_completed'])) {
+        [$where, $params] = event_scope_sql($user);
+        $ids = array_map('intval', array_column(q_all("SELECT e.id FROM events e WHERE e.is_template = 0 AND e.archived_at IS NULL AND e.status = 'completed' AND $where", $params), 'id'));
+    } else {
+        $ids = array_values(array_unique(array_filter(array_map('intval', (array)($in['event_ids'] ?? [])))));
+        if (!$ids) throw new ApiError('رویدادی انتخاب نشده است.');
+        if (count($ids) > 500) throw new ApiError('تعداد رویدادها بیش از حد است.');
+    }
+    // ابتدا دسترسی به همه بررسی می‌شود تا بایگانی نیمه‌کاره انجام نشود
+    $evs = array_map(fn($id) => event_access($user, $id, 'tasks'), $ids);
+    $n = 0;
+    foreach ($evs as $ev) {
+        $id = (int)$ev['id'];
+        if (!empty($ev['is_template']) || !empty($ev['archived_at'])) continue;
+        q('UPDATE events SET archived_at = NOW(), archived_by = ? WHERE id = ? AND archived_at IS NULL', [$user['full_name'], $id]);
+        log_action($id, "رویداد توسط {$user['full_name']} بایگانی شد.");
+        $n++;
+    }
+    return ['success' => true, 'count' => $n];
+}
+
+function h_unarchive_event(array $in, array $user): array
+{
+    $id = in_id($in, 'event_id', 'رویداد');
+    event_access($user, $id, 'tasks');
+    q('UPDATE events SET archived_at = NULL, archived_by = NULL WHERE id = ?', [$id]);
+    log_action($id, "رویداد توسط {$user['full_name']} از بایگانی خارج شد.");
+    return ['success' => true];
+}
+
+function h_archive_count(array $in, array $user): array
+{
+    [$where, $params] = event_scope_sql($user);
+    return [
+        'archived' => (int)q_val("SELECT COUNT(*) FROM events e WHERE e.is_template = 0 AND e.archived_at IS NOT NULL AND $where", $params),
+        'completed_active' => (int)q_val("SELECT COUNT(*) FROM events e WHERE e.is_template = 0 AND e.archived_at IS NULL AND e.status = 'completed' AND $where", $params),
+    ];
 }
