@@ -33,7 +33,7 @@ export default function ChangePassword({ user, forced = false, onDone, onCancel,
     const inputCls = 'glass-soft w-full border-2 p-4 rounded-2xl text-center font-bold outline-none focus:border-indigo-500 dark:text-white transition-colors';
     const card = (
         <div className="glass p-8 sm:p-10 rounded-[2.5rem] w-full max-w-md text-center fade-in border-t-8 border-amber-500">
-            <div className="w-16 h-16 bg-amber-50 dark:bg-amber-900/30 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4"><Icons.Alert /></div>
+            <div className="w-16 h-16 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full flex items-center justify-center mx-auto mb-4"><Icons.Alert /></div>
             <h2 className="text-2xl font-bold mb-3 text-slate-800 dark:text-white">{forced ? 'تغییر رمز عبور الزامی است' : 'تغییر رمز عبور'}</h2>
             {forced && <p className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">رمز فعلی شما ضعیف یا موقت است. برای ادامه، یک رمز جدید و قوی انتخاب کنید.</p>}
             <form onSubmit={submit} className="space-y-3 mt-4">

@@ -21,7 +21,7 @@ export function StarInput({ value = 0, onChange, label = 'امتیاز', disable
             {[1, 2, 3, 4, 5].map(n => (
                 <button key={n} type="button" disabled={disabled} role="radio" aria-checked={Number(value) === n} aria-label={`${n} ستاره`}
                     onMouseEnter={() => setHover(n)} onClick={() => onChange(Number(value) === n ? 0 : n)}
-                    className={`text-2xl leading-none px-0.5 transition-transform hover:scale-110 disabled:opacity-50 ${n <= v ? 'text-amber-400' : 'text-slate-300 dark:text-slate-600'}`}>★</button>
+                    className={`text-2xl leading-none px-0.5 transition-transform hover:scale-110 disabled:opacity-50 ${n <= v ? 'text-amber-400' : 'text-slate-400 dark:text-slate-500'}`}>★</button>
             ))}
         </span>
     );

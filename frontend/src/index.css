@@ -34,6 +34,22 @@
 }
 
 * { font-family: 'Vazirmatn', tahoma, sans-serif; }
+
+/* فیلدهای فرم: پیش‌فرض یکسان در هر دو پوسته.
+   :where() ویژگی صفر دارد، پس هر کلاس پس‌زمینه/رنگی که روی فیلد گذاشته شود همچنان اولویت دارد.
+   بدون این قاعده مرورگر پس‌زمینه سفید می‌گذارد و در پوسته تیره متن سفید روی زمینه سفید دیده نمی‌شود. */
+:where(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]), select, textarea) {
+  background-color: var(--glass-field-bg);
+  color: #1e293b;
+}
+:where(input, textarea)::placeholder { color: #94a3b8; opacity: 1; }
+.dark :where(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]), select, textarea) { color: #f1f5f9; }
+.dark :where(input, textarea)::placeholder { color: #8b8fb0; }
+/* منوی کشویی و تقویم بومی مرورگر هم تیره شوند */
+.dark { color-scheme: dark; }
+.dark :where(select option, select optgroup) { background-color: #1e1b4b; color: #f1f5f9; }
+/* پر شدن خودکار مرورگر (Chrome) زمینه زرد/سفید نگذارد */
+.dark input:-webkit-autofill { -webkit-text-fill-color: #f1f5f9; -webkit-box-shadow: 0 0 0 1000px #1e1b4b inset; caret-color: #f1f5f9; }
 html { background: var(--page-base); }
 body { -webkit-tap-highlight-color: transparent; background: transparent !important; min-height: 100vh; }
 

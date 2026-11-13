@@ -35,7 +35,7 @@ export default function VenueForm({ onSave, editItem }) {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
                     <input aria-label="مثال: پارکینگ" type="text" placeholder="مثال: پارکینگ" value={form.facInput} onChange={(e) => setForm({...form, facInput: e.target.value})} onKeyDown={(e) => { if(e.key === 'Enter') { e.preventDefault(); addFacility(); } }} className="w-full border dark:border-white/10 p-2.5 rounded-lg text-sm outline-none dark:text-white" />
-                    <button type="button" onClick={addFacility} className="w-full sm:w-auto bg-amber-500 text-white px-5 py-2.5 rounded-lg text-sm font-semibold shadow-sm hover:bg-amber-600">افزودن</button>
+                    <button type="button" onClick={addFacility} className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold shadow-sm hover:bg-amber-600">افزودن</button>
                 </div>
             </div>
             <button onClick={submit} className={`w-full text-white py-4 rounded-xl font-bold text-lg shadow-sm ${editItem ? 'bg-blue-600' : 'bg-green-600'}`}>{editItem ? 'ذخیره تغییرات' : 'ثبت مکان'}</button>

@@ -57,7 +57,7 @@ export default function JalaliDatePicker({ value, onChange, dateOnly = false, cl
         {[...Array(dayCount)].map((_, i) => <option key={i} value={i + 1}>{toPersianNum(i + 1)}</option>)}
       </select>
       {!dateOnly && <>
-      <span className="font-bold text-slate-300 dark:text-slate-600 self-center hidden sm:inline">|</span>
+      <span className="font-bold text-slate-400 dark:text-slate-500 self-center hidden sm:inline">|</span>
       <select aria-label="ساعت" value={parts.h} onChange={(e) => update('h', e.target.value)} className={`w-16 ${selCls}`}>
         {[...Array(24)].map((_, i) => <option key={i} value={i}>{toPersianNum(String(i).padStart(2, '0'))}</option>)}
       </select>

@@ -56,7 +56,7 @@ export default function SecurityModal({ user, onDone, onClose, forced = false, o
                     {user.totp_enabled ? (
                         <>
                             <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400 mb-4">✓ ورود دومرحله‌ای برای حساب شما فعال است.</p>
-                            {!forced && <button type="button" onClick={disable} className="w-full py-3 rounded-xl border border-red-300 text-red-600 font-semibold hover:bg-red-50 dark:hover:bg-red-900/20">غیرفعال کردن</button>}
+                            {!forced && <button type="button" onClick={disable} className="w-full py-3 rounded-xl border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 font-semibold hover:bg-red-50 dark:hover:bg-red-900/20">غیرفعال کردن</button>}
                         </>
                     ) : <button type="button" disabled={busy} onClick={begin} className="w-full py-3 rounded-xl btn-grad font-bold">شروع فعال‌سازی</button>}
                 </>

@@ -192,7 +192,7 @@ export default function ServiceForm({ onSave, categories, editItem }) {
                             <div className="flex flex-wrap gap-2">
                                 {p.tasks.length === 0 && <span className="text-xs text-slate-500">بدون میکروتسک</span>}
                                 {p.tasks.map((t, idx) => (
-                                    <span key={idx} className={`text-xs border px-2.5 py-1.5 rounded-lg flex items-center gap-2 shadow-sm break-words max-w-full ${t.dep ? 'bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-900/30' : 'glass text-slate-600 dark:text-slate-300'}`}>
+                                    <span key={idx} className={`text-xs border px-2.5 py-1.5 rounded-lg flex items-center gap-2 shadow-sm break-words max-w-full ${t.dep ? 'bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-900/30 dark:border-amber-800 dark:text-amber-200' : 'glass text-slate-600 dark:text-slate-300'}`}>
                                         <span className="truncate">{toPersianNum(t.title)}</span> <b className="text-indigo-600 dark:text-indigo-400 shrink-0">@{toPersianNum(t.role)}</b>
                                         {t.dep && <Icons.Link/>}
                                     </span>

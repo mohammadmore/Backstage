@@ -35,7 +35,7 @@ export default function ImageUploader({ value, onChange, type, placeholder }) {
                     <img src={value} alt={placeholder} className={`w-24 h-24 object-cover border-4 border-white dark:border-white/10 shadow ${shape}`} />
                     <div className="flex gap-2">
                         <button type="button" onClick={pick} className="glass text-xs font-semibold text-indigo-700 dark:text-indigo-300 border border-indigo-200 px-3 py-1.5 rounded-lg hover:bg-white/60">تغییر عکس</button>
-                        <button type="button" onClick={() => onChange('')} className="glass text-xs font-semibold text-red-600 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50 inline-flex items-center gap-1"><Icons.Trash /> حذف</button>
+                        <button type="button" onClick={() => onChange('')} className="glass text-xs font-semibold text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 px-3 py-1.5 rounded-lg hover:bg-red-50 inline-flex items-center gap-1"><Icons.Trash /> حذف</button>
                     </div>
                 </div>
             ) : (
